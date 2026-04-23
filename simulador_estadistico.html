@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador Estadístico — Saber 11</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --p:#3D008D; --pk:#ED1E79; --navy:#001A4D; --gold:#FDB913;
+  --teal:#1D9E75; --bg:#0A0A1A; --s1:#12122A; --s2:#1A1A35;
+  --border:rgba(237,30,121,0.18); --text:#F0EEF8; --muted:rgba(240,238,248,0.5);
+  --grad:linear-gradient(140deg,#3D008D 0%,#ED1E79 100%);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+
+/* ── TABS ── */
+.top-bar{background:var(--s1);border-bottom:1px solid var(--border);padding:0 32px;display:flex;align-items:center;gap:0;}
+.top-logo{font-size:13px;font-weight:800;padding:16px 24px 16px 0;border-right:1px solid var(--border);margin-right:24px;white-space:nowrap;}
+.top-logo span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.tab{padding:18px 20px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap;}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--text);border-bottom-color:var(--pk);}
+
+.page{display:none;padding:32px;animation:fi .3s ease;}
+.page.active{display:block;}
+@keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ── LAYOUT ── */
+.ph{margin-bottom:28px;}
+.ph .ptag{font-size:10px;font-weight:700;letter-spacing:2px;color:var(--pk);text-transform:uppercase;margin-bottom:6px;}
+.ph h2{font-size:24px;font-weight:800;}
+.ph h2 span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.ph p{color:var(--muted);font-size:13px;margin-top:5px;max-width:600px;line-height:1.6;}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+.col{display:flex;flex-direction:column;gap:20px;}
+
+/* ── CARDS ── */
+.card{background:var(--s1);border:1px solid var(--border);border-radius:16px;padding:22px;}
+.card h3{font-size:14px;font-weight:700;margin-bottom:4px;}
+.card .csub{font-size:12px;color:var(--muted);margin-bottom:18px;}
+
+/* ── SLIDERS ── */
+.slider-group{margin-bottom:16px;}
+.slider-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.slider-label{font-size:12px;color:var(--muted);font-weight:600;}
+.slider-val{font-size:14px;font-weight:700;font-family:'Fira Code',monospace;color:var(--pk);min-width:60px;text-align:right;}
+input[type=range]{width:100%;height:4px;border-radius:2px;outline:none;cursor:pointer;
+  -webkit-appearance:none;background:var(--s2);}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;
+  border-radius:50%;background:var(--pk);cursor:pointer;box-shadow:0 0 0 3px rgba(237,30,121,0.25);}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;}
+
+/* ── RESULT BOXES ── */
+.result-big{background:var(--s2);border-radius:12px;padding:20px;text-align:center;margin-bottom:14px;}
+.result-big .rl{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.result-big .rv{font-size:40px;font-weight:800;font-family:'Fira Code',monospace;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1;}
+.result-big .rsub{font-size:11px;color:var(--muted);margin-top:4px;}
+
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);}
+.stat-row:last-child{border-bottom:none;}
+.stat-row .sl{font-size:12px;color:var(--muted);}
+.stat-row .sv{font-size:13px;font-weight:700;font-family:'Fira Code',monospace;}
+.sv.red{color:#ED1E79;} .sv.green{color:#1D9E75;} .sv.gold{color:#FDB913;} .sv.blue{color:#85B7EB;}
+
+/* ── BADGE ── */
+.badge{display:inline-block;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;margin-top:8px;}
+.b-green{background:rgba(29,158,117,0.2);color:#5DCAA5;}
+.b-pink{background:rgba(237,30,121,0.2);color:#ED1E79;}
+.b-gold{background:rgba(253,185,19,0.2);color:#FDB913;}
+.b-blue{background:rgba(133,183,235,0.2);color:#85B7EB;}
+
+/* ── POTENCIA BAR ── */
+.power-bar-wrap{margin:12px 0;}
+.power-bar-bg{background:var(--s2);border-radius:6px;height:32px;overflow:hidden;position:relative;}
+.power-bar-fill{height:100%;border-radius:6px;transition:width .6s cubic-bezier(.4,0,.2,1);display:flex;align-items:center;padding-left:12px;font-size:12px;font-weight:700;}
+.power-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px;}
+
+/* ── COMPARISON TABLE ── */
+.ctable{width:100%;border-collapse:collapse;font-size:12px;}
+.ctable th{background:var(--s2);padding:10px 14px;text-align:left;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);}
+.ctable td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.04);font-family:'Fira Code',monospace;}
+.ctable tr.hl td{color:var(--pk);font-weight:600;}
+.ctable tr:last-child td{border-bottom:none;}
+
+/* ── FORMULA ── */
+.formula{background:var(--s2);border-radius:10px;padding:14px;font-family:'Fira Code',monospace;font-size:13px;color:var(--gold);text-align:center;margin:12px 0;}
+
+/* ── ALERT ── */
+.alert{border-radius:10px;padding:12px 16px;font-size:12px;line-height:1.6;margin-top:12px;}
+.alert.warn{background:rgba(253,185,19,0.1);border:1px solid rgba(253,185,19,0.25);color:#FDB913;}
+.alert.ok{background:rgba(29,158,117,0.1);border:1px solid rgba(29,158,117,0.25);color:#5DCAA5;}
+.alert.info{background:rgba(61,0,141,0.15);border:1px solid rgba(61,0,141,0.3);color:var(--muted);}
+.alert strong{color:var(--text);}
+
+/* ── ANOVA VIZ ── */
+.anova-viz{display:flex;gap:6px;align-items:flex-end;height:120px;margin:12px 0;}
+.anova-bar{flex:1;border-radius:6px 6px 0 0;transition:height .4s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:6px;font-size:10px;font-weight:700;}
+.anova-bar-label{font-size:10px;color:var(--muted);text-align:center;margin-top:4px;}
+
+/* ── RESET BUTTON ── */
+.reset-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:7px 16px;border-radius:8px;border:1px solid var(--border);
+  background:transparent;color:var(--muted);font-size:12px;font-weight:600;
+  cursor:pointer;transition:all .2s;font-family:'Montserrat',sans-serif;
+  letter-spacing:0.3px;
+}
+.reset-btn:hover{background:rgba(237,30,121,0.1);border-color:var(--pk);color:var(--text);}
+.reset-btn:active{transform:scale(0.97);}
+.reset-btn svg{width:13px;height:13px;}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="top-logo"><span>Simulador</span> Estadístico · Saber 11</div>
+  <div class="tab active" onclick="showTab(0,this)">◈ Muestreo</div>
+  <div class="tab" onclick="showTab(1,this)">◇ ANOVA & DBCA</div>
+  <div class="tab" onclick="showTab(2,this)">◉ Potencia del diseño</div>
+  <div class="tab" onclick="showTab(3,this)">⬡ Comparador</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB 1: MUESTREO
+══════════════════════════════════════════ -->
+<div class="page active" id="tab0">
+  <div class="ph">
+    <div class="ptag">Simulador — Fase I</div>
+    <h2>Cálculo interactivo del <span>tamaño de muestra</span></h2>
+    <p>Mueve los sliders y observa en tiempo real cómo cambia n. Los valores resaltados en morado corresponden al diseño real del proyecto.</p>
+    <button class="reset-btn" onclick="resetMuestreo()" style="margin-top:12px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      Restablecer valores del proyecto
+    </button>
+  </div>
+  <div class="grid2">
+    <div class="col">
+      <!-- Sliders -->
+      <div class="card">
+        <h3>Parámetros del diseño muestral</h3>
+        <div class="csub">Ajusta cada supuesto y observa el efecto en n</div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Nivel de confianza (1−α)</span>
+            <span class="slider-val" id="vConf">95%</span>
+          </div>
+          <input type="range" id="sConf" min="80" max="99" step="1" value="95" oninput="updateMuestreo()">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px"><span>80%</span><span>99%</span></div>
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Margen de error (e) — puntos</span>
+            <span class="slider-val" id="vError">3</span>
+          </div>
+          <input type="range" id="sError" min="1" max="15" step="0.5" value="3" oninput="updateMuestreo()">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px"><span>1 pt</span><span>15 pts</span></div>
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Varianza estimada S²</span>
+            <span class="slider-val" id="vS2">1968</span>
+          </div>
+          <input type="range" id="sS2" min="200" max="4000" step="1" value="1969" oninput="updateMuestreo()">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px"><span>200</span><span>4000</span></div>
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Tamaño poblacional N</span>
+            <span class="slider-val" id="vN">7.1M</span>
+          </div>
+          <input type="range" id="sN" min="1000" max="10000000" step="1000" value="7110000" oninput="updateMuestreo()">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px"><span>1k</span><span>10M</span></div>
+        </div>
+
+        <div class="formula" id="formulaMuestreo">n = ⌈(N·Z²·S²) / (N·e² + Z²·S²)⌉</div>
+      </div>
+
+      <!-- Tabla comparativa niveles de confianza -->
+      <div class="card">
+        <h3>Comparativa por margen de error</h3>
+        <div class="csub">n requerido con los parámetros actuales (S² y N fijos)</div>
+        <table class="ctable" id="tablaComparativa"></table>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card">
+        <div class="result-big">
+          <div class="rl">Tamaño de muestra calculado</div>
+          <div class="rv" id="resultN">841</div>
+          <div class="rsub" id="resultNsub">n = 841 | Corrección finita: despreciable</div>
+        </div>
+        <div class="stat-row"><span class="sl">Z crítico</span><span class="sv gold" id="statZ">1.96</span></div>
+        <div class="stat-row"><span class="sl">n sin corrección finita</span><span class="sv" id="statNinf">841</span></div>
+        <div class="stat-row"><span class="sl">n con corrección finita</span><span class="sv" id="statNfin">841</span></div>
+        <div class="stat-row"><span class="sl">Factor corrección (n/N)</span><span class="sv" id="statFactor">0.012%</span></div>
+        <div class="stat-row"><span class="sl">Fracción de muestreo</span><span class="sv" id="statFrac">0.012%</span></div>
+        <div id="alertMuestreo" class="alert info" style="margin-top:12px">Con los parámetros actuales del proyecto real.</div>
+      </div>
+
+      <div class="card">
+        <h3>Efecto del margen de error en n</h3>
+        <div class="csub">Relación cuadrática inversa — e↑ → n↓ exponencialmente</div>
+        <canvas id="chartN" style="max-height:220px"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB 2: ANOVA
+══════════════════════════════════════════ -->
+<div class="page" id="tab1">
+  <div class="ph">
+    <div class="ptag">Simulador — Fase II</div>
+    <h2>DBCA interactivo — <span>ANOVA en tiempo real</span></h2>
+    <p>Modifica las medias por grupo, el tamaño por celda y la variabilidad interna. La tabla ANOVA y el estadístico F se recalculan instantáneamente.</p>
+    <button class="reset-btn" onclick="resetAnova()" style="margin-top:12px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      Restablecer valores del proyecto
+    </button>
+  </div>
+  <div class="grid2">
+    <div class="col">
+      <div class="card">
+        <h3>Medias por tratamiento</h3>
+        <div class="csub">Factor: Naturaleza del colegio (τᵢ)</div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Media NO OFICIAL</span>
+            <span class="slider-val" id="vMnoOf">282</span>
+          </div>
+          <input type="range" id="sMnoOf" min="200" max="400" step="1" value="282" oninput="updateAnova()">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Media OFICIAL</span>
+            <span class="slider-val" id="vMof">242</span>
+          </div>
+          <input type="range" id="sMof" min="200" max="400" step="1" value="242" oninput="updateAnova()">
+        </div>
+
+        <h3 style="margin-top:16px;">Medias por bloque</h3>
+        <div class="csub">Bloque: Jornada escolar (βⱼ)</div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Media jornada COMPLETA</span>
+            <span class="slider-val" id="vMcomp">280</span>
+          </div>
+          <input type="range" id="sMcomp" min="180" max="380" step="1" value="280" oninput="updateAnova()">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Media jornada MAÑANA</span>
+            <span class="slider-val" id="vMman">247</span>
+          </div>
+          <input type="range" id="sMman" min="180" max="380" step="1" value="247" oninput="updateAnova()">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Media jornada NOCHE</span>
+            <span class="slider-val" id="vMnoc">217</span>
+          </div>
+          <input type="range" id="sMnoc" min="180" max="380" step="1" value="217" oninput="updateAnova()">
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Variabilidad y tamaño</h3>
+        <div class="csub">Controla el error experimental y las réplicas</div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Desv. estándar intra-grupo (σ)</span>
+            <span class="slider-val" id="vSigma">44</span>
+          </div>
+          <input type="range" id="sSigma" min="5" max="100" step="1" value="44" oninput="updateAnova()">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">n por celda (réplicas)</span>
+            <span class="slider-val" id="vRep">55</span>
+          </div>
+          <input type="range" id="sRep" min="3" max="200" step="1" value="55" oninput="updateAnova()">
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card">
+        <h3>Tabla ANOVA — DBCA</h3>
+        <div class="csub">Modelo: Y ~ Tratamiento + Bloque</div>
+        <table class="ctable" id="tablaAnova" style="margin-top:8px"></table>
+        <div id="anovaVeredicto" class="alert ok" style="margin-top:12px"></div>
+      </div>
+
+      <div class="card">
+        <h3>Descomposición de la varianza</h3>
+        <div class="csub">SS Total = SS Tratamiento + SS Bloque + SS Error</div>
+        <div class="anova-viz" id="anovaViz"></div>
+        <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
+          <span style="font-size:11px;display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:#ED1E79;display:inline-block"></span>Tratamiento</span>
+          <span style="font-size:11px;display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:#FDB913;display:inline-block"></span>Bloque</span>
+          <span style="font-size:11px;display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:#85B7EB;display:inline-block"></span>Error</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Estadísticos clave</h3>
+        <div class="stat-row"><span class="sl">F — Tratamiento (naturaleza)</span><span class="sv red" id="statFtrat">—</span></div>
+        <div class="stat-row"><span class="sl">F — Bloque (jornada)</span><span class="sv gold" id="statFbloque">—</span></div>
+        <div class="stat-row"><span class="sl">p-valor tratamiento</span><span class="sv" id="statPtrat">—</span></div>
+        <div class="stat-row"><span class="sl">Diferencia entre medias (τ)</span><span class="sv blue" id="statDiff">—</span></div>
+        <div class="stat-row"><span class="sl">CMError</span><span class="sv" id="statCME">—</span></div>
+        <div class="stat-row"><span class="sl">R² del modelo</span><span class="sv green" id="statR2">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB 3: POTENCIA
+══════════════════════════════════════════ -->
+<div class="page" id="tab2">
+  <div class="ph">
+    <div class="ptag">Simulador — Potencia</div>
+    <h2>Potencia del <span>diseño experimental</span></h2>
+    <p>La potencia (1−β) es la probabilidad de detectar una diferencia real cuando existe. Explora cómo cambia según el tamaño de muestra, la diferencia entre grupos y la variabilidad.</p>
+    <button class="reset-btn" onclick="resetPotencia()" style="margin-top:12px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      Restablecer valores del proyecto
+    </button>
+  </div>
+  <div class="grid2">
+    <div class="col">
+      <div class="card">
+        <h3>Parámetros del experimento</h3>
+        <div class="csub">Define las condiciones del diseño</div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Diferencia real entre grupos (δ)</span>
+            <span class="slider-val" id="vDelta">41</span>
+          </div>
+          <input type="range" id="sDelta" min="5" max="100" step="1" value="41" oninput="updatePotencia()">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px"><span>5 pts</span><span>100 pts</span></div>
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Desviación estándar intra-grupo (σ)</span>
+            <span class="slider-val" id="vSigmaPow">44</span>
+          </div>
+          <input type="range" id="sSigmaPow" min="5" max="120" step="1" value="44" oninput="updatePotencia()">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">n por grupo</span>
+            <span class="slider-val" id="vNpow">55</span>
+          </div>
+          <input type="range" id="sNpow" min="3" max="300" step="1" value="55" oninput="updatePotencia()">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Nivel de significancia α</span>
+            <span class="slider-val" id="vAlpha">0.05</span>
+          </div>
+          <input type="range" id="sAlpha" min="1" max="20" step="1" value="5" oninput="updatePotencia()">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">Número de tratamientos (k)</span>
+            <span class="slider-val" id="vK">2</span>
+          </div>
+          <input type="range" id="sK" min="2" max="6" step="1" value="2" oninput="updatePotencia()">
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card">
+        <div class="result-big">
+          <div class="rl">Potencia del diseño (1−β)</div>
+          <div class="rv" id="resultPow">—</div>
+          <div class="rsub" id="resultPowSub">Probabilidad de detectar la diferencia</div>
+        </div>
+
+        <div class="power-bar-wrap">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:600">Escala de potencia</div>
+          <div class="power-bar-bg">
+            <div class="power-bar-fill" id="powerBarFill" style="width:0%"></div>
+          </div>
+          <div class="power-label"><span>0%</span><span style="color:#FDB913">80% (mínimo aceptable)</span><span>100%</span></div>
+        </div>
+
+        <div class="stat-row"><span class="sl">Tamaño del efecto (d de Cohen)</span><span class="sv gold" id="statCohen">—</span></div>
+        <div class="stat-row"><span class="sl">Parámetro de no centralidad λ</span><span class="sv" id="statLambda">—</span></div>
+        <div class="stat-row"><span class="sl">n mínimo para potencia 80%</span><span class="sv blue" id="statNmin80">—</span></div>
+        <div class="stat-row"><span class="sl">n mínimo para potencia 90%</span><span class="sv blue" id="statNmin90">—</span></div>
+        <div id="alertPow" class="alert ok" style="margin-top:12px"></div>
+      </div>
+
+      <div class="card">
+        <h3>Curva potencia vs n</h3>
+        <div class="csub">Con la diferencia y σ actuales — punto morado = diseño real</div>
+        <canvas id="chartPower" style="max-height:220px"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB 4: COMPARADOR
+══════════════════════════════════════════ -->
+<div class="page" id="tab3">
+  <div class="ph">
+    <div class="ptag">Comparador</div>
+    <h2>Diseño real vs <span>escenarios alternativos</span></h2>
+    <p>Compara el diseño del proyecto con dos escenarios hipotéticos para entender el impacto de las decisiones metodológicas.</p>
+  </div>
+  <div class="grid3" style="margin-bottom:20px">
+    <div class="card" style="border-color:rgba(237,30,121,0.4)">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:var(--pk);margin-bottom:8px">DISEÑO REAL DEL PROYECTO</div>
+      <div class="stat-row"><span class="sl">Tipo de muestreo</span><span class="sv">Estratificado</span></div>
+      <div class="stat-row"><span class="sl">n calculado</span><span class="sv red">841</span></div>
+      <div class="stat-row"><span class="sl">Nivel de confianza</span><span class="sv">95%</span></div>
+      <div class="stat-row"><span class="sl">Margen de error</span><span class="sv">±3 pts</span></div>
+      <div class="stat-row"><span class="sl">Diseño exp.</span><span class="sv">DBCA</span></div>
+      <div class="stat-row"><span class="sl">F tratamiento</span><span class="sv red">53.7</span></div>
+      <div class="stat-row"><span class="sl">p-valor</span><span class="sv red">1.88×10⁻¹²</span></div>
+      <div class="stat-row"><span class="sl">Potencia estimada</span><span class="sv green">~99%</span></div>
+      <span class="badge b-pink">Diseño implementado</span>
+    </div>
+
+    <div class="card">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:var(--gold);margin-bottom:8px">ESCENARIO A — MÁS RESTRICTIVO</div>
+      <div class="stat-row"><span class="sl">Tipo de muestreo</span><span class="sv">MAS</span></div>
+      <div class="stat-row"><span class="sl">n calculado</span><span class="sv gold" id="cmpNA">—</span></div>
+      <div class="stat-row"><span class="sl">Nivel de confianza</span><span class="sv">99%</span></div>
+      <div class="stat-row"><span class="sl">Margen de error</span><span class="sv">±1 pts</span></div>
+      <div class="stat-row"><span class="sl">Diseño exp.</span><span class="sv">DCA</span></div>
+      <div class="stat-row"><span class="sl">F tratamiento</span><span class="sv gold" id="cmpFA">—</span></div>
+      <div class="stat-row"><span class="sl">p-valor</span><span class="sv gold" id="cmpPA">—</span></div>
+      <div class="stat-row"><span class="sl">Potencia estimada</span><span class="sv gold" id="cmpPowA">—</span></div>
+      <span class="badge b-gold">Más preciso, más costoso</span>
+    </div>
+
+    <div class="card">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#85B7EB;margin-bottom:8px">ESCENARIO B — MÁS RELAJADO</div>
+      <div class="stat-row"><span class="sl">Tipo de muestreo</span><span class="sv">MAS</span></div>
+      <div class="stat-row"><span class="sl">n calculado</span><span class="sv blue" id="cmpNB">—</span></div>
+      <div class="stat-row"><span class="sl">Nivel de confianza</span><span class="sv">90%</span></div>
+      <div class="stat-row"><span class="sl">Margen de error</span><span class="sv">±5 pts</span></div>
+      <div class="stat-row"><span class="sl">Diseño exp.</span><span class="sv">DCA sin bloques</span></div>
+      <div class="stat-row"><span class="sl">F tratamiento</span><span class="sv blue" id="cmpFB">—</span></div>
+      <div class="stat-row"><span class="sl">p-valor</span><span class="sv blue" id="cmpPB">—</span></div>
+      <div class="stat-row"><span class="sl">Potencia estimada</span><span class="sv blue" id="cmpPowB">—</span></div>
+      <span class="badge b-blue">Menos preciso, más rápido</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>¿Por qué el DBCA es mejor que el DCA para este problema?</h3>
+    <div class="csub">Impacto del bloqueo sobre el CMError y la potencia</div>
+    <canvas id="chartComparador" style="max-height:200px;margin-top:12px"></canvas>
+    <div class="alert info" style="margin-top:16px">
+      <strong>Clave conceptual:</strong> Al incluir la jornada como bloque en el DBCA, removemos su variabilidad del error residual. Esto reduce el CMError de ~3200 (DCA) a ~1948 (DBCA), lo que aumenta el estadístico F de ~32 a ~54 y la potencia del diseño del 95% al 99%.
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════ DISTRIBUCIÓN NORMAL ══════════════ */
+function normalCDF(z) {
+  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+  const sign = z<0?-1:1; const x=Math.abs(z)/Math.sqrt(2);
+  const t=1/(1+p*x);
+  const y=1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+  return 0.5*(1+sign*y);
+}
+function normalINV(p) {
+  const a=[2.515517,0.802853,0.010328];
+  const b=[1.432788,0.189269,0.001308];
+  const t=Math.sqrt(-2*Math.log(p<0.5?p:1-p));
+  const x=t-(a[0]+a[1]*t+a[2]*t*t)/(1+b[0]*t+b[1]*t*t+b[2]*t*t*t);
+  return p<0.5?-x:x;
+}
+function fDistCDF(f, d1, d2) {
+  if(f<=0) return 0;
+  const x = d1*f/(d1*f+d2);
+  return incompleteBeta(x, d1/2, d2/2);
+}
+function incompleteBeta(x, a, b) {
+  if(x<=0) return 0; if(x>=1) return 1;
+  let bt = Math.exp(a*Math.log(x)+b*Math.log(1-x)-logBeta(a,b));
+  if(x<(a+1)/(a+b+2)) return bt*betaCF(x,a,b)/a;
+  return 1-bt*betaCF(1-x,b,a)/b;
+}
+function betaCF(x,a,b) {
+  const maxIt=200,eps=3e-7; let fpmin=1e-30;
+  let qab=a+b,qap=a+1,qam=a-1,c=1,d=1-qab*x/qap;
+  if(Math.abs(d)<fpmin) d=fpmin; d=1/d; let h=d;
+  for(let m=1;m<=maxIt;m++){
+    let m2=2*m,aa=m*(b-m)*x/((qam+m2)*(a+m2));
+    d=1+aa*d; if(Math.abs(d)<fpmin) d=fpmin;
+    c=1+aa/c; if(Math.abs(c)<fpmin) c=fpmin;
+    d=1/d; h*=d*c;
+    aa=-(a+m)*(qab+m)*x/((a+m2)*(qap+m2));
+    d=1+aa*d; if(Math.abs(d)<fpmin) d=fpmin;
+    c=1+aa/c; if(Math.abs(c)<fpmin) c=fpmin;
+    d=1/d; let del=d*c; h*=del;
+    if(Math.abs(del-1)<eps) break;
+  }
+  return h;
+}
+function logBeta(a,b){
+  function lgamma(x){
+    const c=[76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,
+      0.1208650973866179e-2,-0.5395239384953e-5];
+    let y=x,tmp=x+5.5; tmp-=(x+0.5)*Math.log(tmp);
+    let ser=1.000000000190015;
+    for(let j=0;j<6;j++) ser+=c[j]/++y;
+    return -tmp+Math.log(2.5066282746310005*ser/x);
+  }
+  return lgamma(a)+lgamma(b)-lgamma(a+b);
+}
+function pvalF(f, d1, d2) { return 1-fDistCDF(f, d1, d2); }
+function fmtP(p) {
+  if(p<0.0001) return p.toExponential(2);
+  if(p<0.001) return p.toFixed(5);
+  return p.toFixed(4);
+}
+function getZ(conf) {
+  const lookup = {80:1.282, 85:1.440, 90:1.645, 91:1.695, 92:1.751, 93:1.812,
+                  94:1.881, 95:1.960, 96:2.054, 97:2.170, 98:2.326, 99:2.576};
+  if(lookup[conf]) return lookup[conf];
+  const alpha = 1 - conf/100;
+  return Math.abs(normalINV(alpha/2));
+}
+function calcPower(delta, sigma, n, alpha, k) {
+  const df1=k-1, df2=k*(n-1);
+  const fcrit_approx = 4.0; 
+  const lambda = (n * delta * delta) / (2 * sigma * sigma);
+  const power = 1 - normalCDF(Math.sqrt(2*fcrit_approx) - Math.sqrt(2*lambda+1));
+  return Math.min(0.9999, Math.max(0.0001, power));
+}
+
+/* ══════════════ TAB NAVIGATION ══════════════ */
+function showTab(idx, el) {
+  document.querySelectorAll('.page').forEach((p,i)=>p.classList.toggle('active',i===idx));
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===idx));
+  if(idx===0) updateMuestreo();
+  if(idx===1) updateAnova();
+  if(idx===2) updatePotencia();
+  if(idx===3) updateComparador();
+}
+
+/* ══════════════ TAB 1: MUESTREO ══════════════ */
+let chartN_inst = null;
+function updateMuestreo() {
+  const conf = +document.getElementById('sConf').value;
+  const e    = +document.getElementById('sError').value;
+  const S2   = +document.getElementById('sS2').value;
+  const N    = +document.getElementById('sN').value;
+  const Z    = getZ(conf);
+
+  document.getElementById('vConf').textContent = conf+'%';
+  document.getElementById('vError').textContent = e;
+  document.getElementById('vS2').textContent = S2.toLocaleString();
+  document.getElementById('vN').textContent = N>=1000000?(N/1000000).toFixed(1)+'M':N>=1000?(N/1000).toFixed(0)+'k':N;
+
+  const n_inf = (Z*Z*S2)/(e*e);
+  const n_fin = Math.ceil(n_inf/(1+(n_inf/N)));
+  const fac   = n_fin/N*100;
+
+  document.getElementById('resultN').textContent = n_fin.toLocaleString();
+  document.getElementById('resultNsub').textContent = `n = ${n_fin.toLocaleString()} | Fracción: ${fac.toFixed(4)}%`;
+  document.getElementById('statZ').textContent = Z.toFixed(4);
+  document.getElementById('statNinf').textContent = Math.ceil(n_inf).toLocaleString();
+  document.getElementById('statNfin').textContent = n_fin.toLocaleString();
+  document.getElementById('statFactor').textContent = fac.toFixed(4)+'%';
+  document.getElementById('statFrac').textContent = fac.toFixed(4)+'%';
+  document.getElementById('formulaMuestreo').textContent =
+    `n = ⌈(${(N/1e6).toFixed(2)}M · ${Z.toFixed(2)}² · ${S2}) / (${(N/1e6).toFixed(2)}M · ${e}² + ${Z.toFixed(2)}² · ${S2})⌉ = ${n_fin}`;
+
+  const isReal = (conf===95 && e===3 && Math.abs(S2-1968)<100);
+  document.getElementById('alertMuestreo').className = 'alert '+(isReal?'ok':'info');
+  document.getElementById('alertMuestreo').innerHTML = isReal
+    ? '<strong>Diseño real del proyecto.</strong> n = 841 calculado con los supuestos originales.'
+    : `<strong>Escenario alternativo.</strong> Con e=±${e} pts al ${conf}%, necesitarías n = ${n_fin.toLocaleString()} estudiantes. ${n_fin>5000?'Muy costoso de recolectar.':n_fin<100?'Muestra pequeña, menor precisión.':'Tamaño razonable.'}`;
+
+  const errors = [1,2,3,4,5,6,8,10,12,15];
+  const ns = errors.map(ei => Math.ceil((Z*Z*S2)/(ei*ei)/(1+(Z*Z*S2/ei/ei/N))));
+
+  if(chartN_inst) chartN_inst.destroy();
+  chartN_inst = new Chart(document.getElementById('chartN'), {
+    type:'line',
+    data:{
+      labels: errors.map(e=>e+' pts'),
+      datasets:[{
+        label:'n requerido',
+        data: ns,
+        borderColor:'#ED1E79',backgroundColor:'rgba(237,30,121,0.1)',
+        borderWidth:2,pointRadius:5,pointBackgroundColor:'#ED1E79',
+        fill:true,tension:0.3
+      },{
+        label:'n actual (e='+e+')',
+        data: errors.map(ei=>ei===e?n_fin:null),
+        pointRadius:10,pointBackgroundColor:'#FDB913',
+        borderColor:'transparent',backgroundColor:'transparent',
+        showLine:false
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:true,
+      plugins:{legend:{labels:{boxWidth:10,font:{size:11}}},
+        tooltip:{callbacks:{label:ctx=>` n = ${ctx.raw?.toLocaleString()??''}`}}},
+      scales:{
+        y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{callback:v=>v.toLocaleString()}},
+        x:{grid:{display:false}}
+      }
+    }
+  });
+
+  const tbl = document.getElementById('tablaComparativa');
+  const confs = [90,95,99];
+  const errs  = [1,2,3,5,10];
+  tbl.innerHTML = `<thead><tr><th>e \\ conf</th>${confs.map(c=>`<th>${c}%</th>`).join('')}</tr></thead><tbody>
+    ${errs.map(ei=>`<tr${ei===e?` class="hl"`:''}><td>${ei} pts</td>${confs.map(c=>{
+      const Zc=getZ(c), ni=Math.ceil((Zc*Zc*S2)/(ei*ei)/(1+((Zc*Zc*S2)/(ei*ei*N))));
+      return `<td${ei===e&&c===conf?' style="color:#FDB913"':''}>${ni.toLocaleString()}</td>`;
+    }).join('')}</tr>`).join('')}
+  </tbody>`;
+}
+
+/* ══════════════ TAB 2: ANOVA ══════════════ */
+function updateAnova() {
+  const mNoOf  = +document.getElementById('sMnoOf').value;
+  const mOf    = +document.getElementById('sMof').value;
+  const mComp  = +document.getElementById('sMcomp').value;
+  const mMan   = +document.getElementById('sMman').value;
+  const mNoc   = +document.getElementById('sMnoc').value;
+  const sigma  = +document.getElementById('sSigma').value;
+  const r      = +document.getElementById('sRep').value;
+
+  document.getElementById('vMnoOf').textContent = mNoOf;
+  document.getElementById('vMof').textContent   = mOf;
+  document.getElementById('vMcomp').textContent = mComp;
+  document.getElementById('vMman').textContent  = mMan;
+  document.getElementById('vMnoc').textContent  = mNoc;
+  document.getElementById('vSigma').textContent = sigma;
+  document.getElementById('vRep').textContent   = r;
+
+  const t=2, b=3;
+  const N_total = t*b*r;
+  const mu = (mNoOf+mOf)/2;
+
+  // SS Tratamiento
+  const SSTrat = b*r*((mNoOf-mu)**2 + (mOf-mu)**2);
+
+  // SS Bloque
+  const muB = (mComp+mMan+mNoc)/3;
+  const SSBloque = t*r*((mComp-muB)**2 + (mMan-muB)**2 + (mNoc-muB)**2);
+
+  // SS Error (basado en sigma)
+  const SSError = (N_total - t - b + 1) * sigma * sigma;
+
+  const SSTotal = SSTrat + SSBloque + SSError;
+  const dfTrat=t-1, dfBloque=b-1, dfError=(t-1)*(b-1)*r + t*b*(r-1);
+  const CMTrat=SSTrat/dfTrat, CMBloque=SSBloque/dfBloque, CMError=SSError/dfError;
+  const FTrat=CMTrat/CMError, FBloque=CMBloque/CMError;
+  const pTrat=pvalF(FTrat,dfTrat,dfError);
+  const pBloque=pvalF(FBloque,dfBloque,dfError);
+  const R2=(SSTrat+SSBloque)/SSTotal;
+
+  document.getElementById('statFtrat').textContent   = FTrat.toFixed(2);
+  document.getElementById('statFbloque').textContent = FBloque.toFixed(2);
+  document.getElementById('statPtrat').textContent   = fmtP(pTrat);
+  document.getElementById('statDiff').textContent    = (mNoOf-mOf).toFixed(1)+' pts';
+  document.getElementById('statCME').textContent     = CMError.toFixed(0);
+  document.getElementById('statR2').textContent      = (R2*100).toFixed(1)+'%';
+
+  const fmt = v => v>=1e6?(v/1e6).toFixed(2)+'M':v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0);
+  document.getElementById('tablaAnova').innerHTML = `
+    <thead><tr><th>Fuente</th><th>Df</th><th>SS</th><th>MS</th><th>F</th><th>p-valor</th></tr></thead>
+    <tbody>
+      <tr class="hl"><td>Tratamiento</td><td>${dfTrat}</td><td>${fmt(SSTrat)}</td><td>${fmt(CMTrat)}</td>
+        <td style="color:#ED1E79">${FTrat.toFixed(2)}</td><td>${fmtP(pTrat)}${pTrat<0.001?' <span class="sig">***</span>':pTrat<0.01?' <span class="sig">**</span>':pTrat<0.05?' <span class="sig">*</span>':''}</td></tr>
+      <tr><td>Bloque</td><td>${dfBloque}</td><td>${fmt(SSBloque)}</td><td>${fmt(CMBloque)}</td>
+        <td style="color:#FDB913">${FBloque.toFixed(2)}</td><td>${fmtP(pBloque)}${pBloque<0.001?' <span class="sig">***</span>':pBloque<0.01?' <span class="sig">**</span>':pBloque<0.05?' <span class="sig">*</span>':''}</td></tr>
+      <tr><td>Error</td><td>${dfError}</td><td>${fmt(SSError)}</td><td>${fmt(CMError)}</td><td>—</td><td>—</td></tr>
+    </tbody>`;
+
+  const sig = pTrat < 0.05;
+  document.getElementById('anovaVeredicto').className = 'alert '+(sig?'ok':'warn');
+  document.getElementById('anovaVeredicto').innerHTML = sig
+    ? `<strong>✓ Se rechaza H₀</strong> — El tipo de colegio tiene efecto significativo (F=${FTrat.toFixed(1)}, p=${fmtP(pTrat)}). Diferencia entre grupos: ${Math.abs(mNoOf-mOf).toFixed(1)} pts.`
+    : `<strong>✗ No se rechaza H₀</strong> — Con estos parámetros no hay evidencia suficiente (F=${FTrat.toFixed(1)}, p=${fmtP(pTrat)}). Aumenta la diferencia entre medias o el tamaño de muestra.`;
+
+  const maxSS = SSTotal;
+  const viz = document.getElementById('anovaViz');
+  const bars=[
+    {ss:SSTrat,color:'#ED1E79',label:'Trat.'},
+    {ss:SSBloque,color:'#FDB913',label:'Bloque'},
+    {ss:SSError,color:'#85B7EB',label:'Error'}
+  ];
+  viz.innerHTML = bars.map(b=>{
+    const pct = (b.ss/maxSS*100).toFixed(1);
+    const h = Math.max(8, b.ss/maxSS*110);
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="font-size:10px;color:var(--muted)">${pct}%</div>
+      <div style="width:100%;height:${h}px;background:${b.color}99;border:1.5px solid ${b.color};border-radius:6px 6px 0 0;transition:height .4s"></div>
+    </div>`;
+  }).join('');
+}
+
+/* ══════════════ TAB 3: POTENCIA ══════════════ */
+let chartPow = null;
+function updatePotencia() {
+  const delta = +document.getElementById('sDelta').value;
+  const sigma = +document.getElementById('sSigmaPow').value;
+  const n     = +document.getElementById('sNpow').value;
+  const alpha = +document.getElementById('sAlpha').value/100;
+  const k     = +document.getElementById('sK').value;
+
+  document.getElementById('vDelta').textContent = delta;
+  document.getElementById('vSigmaPow').textContent = sigma;
+  document.getElementById('vNpow').textContent = n;
+  document.getElementById('vAlpha').textContent = alpha.toFixed(2);
+  document.getElementById('vK').textContent = k;
+
+  const cohen = delta/sigma;
+  const lambda = n*delta*delta/(2*sigma*sigma);
+  const Z_alpha = Math.abs(normalINV(alpha/2));
+  const power = Math.min(0.9999, 1 - normalCDF(Z_alpha - Math.sqrt(2*lambda)));
+
+  let nMin80=3,nMin90=3;
+  for(let ni=3;ni<=500;ni++){
+    const lam=ni*delta*delta/(2*sigma*sigma);
+    const pow=1-normalCDF(Z_alpha-Math.sqrt(2*lam));
+    if(pow>=0.80&&nMin80===3) nMin80=ni;
+    if(pow>=0.90&&nMin90===3) nMin90=ni;
+    if(nMin80>3&&nMin90>3) break;
+  }
+
+  document.getElementById('resultPow').textContent = (power*100).toFixed(1)+'%';
+  document.getElementById('resultPowSub').textContent = power>=0.80?'Potencia adecuada (≥80%)':'Potencia insuficiente (<80%)';
+  document.getElementById('statCohen').textContent = cohen.toFixed(3)+' ('+( cohen<0.2?'muy pequeño':cohen<0.5?'pequeño':cohen<0.8?'mediano':'grande')+')';
+  document.getElementById('statLambda').textContent = lambda.toFixed(2);
+  document.getElementById('statNmin80').textContent = nMin80+' por grupo';
+  document.getElementById('statNmin90').textContent = nMin90+' por grupo';
+
+  const fill = document.getElementById('powerBarFill');
+  const pct = (power*100).toFixed(1);
+  fill.style.width = pct+'%';
+  fill.style.background = power>=0.90?'linear-gradient(90deg,#1D9E75,#5DCAA5)':power>=0.80?'linear-gradient(90deg,#854F0B,#FDB913)':'linear-gradient(90deg,#A32D2D,#ED1E79)';
+  fill.textContent = pct+'%';
+
+  document.getElementById('alertPow').className = 'alert '+(power>=0.80?'ok':'warn');
+  document.getElementById('alertPow').innerHTML = power>=0.80
+    ? `<strong>Potencia adecuada.</strong> Con n=${n}/grupo, δ=${delta} pts y σ=${sigma}, la probabilidad de detectar la diferencia es del ${(power*100).toFixed(1)}%. Se necesitan al menos ${nMin80} obs/grupo para potencia 80%.`
+    : `<strong>Potencia insuficiente.</strong> Con estos parámetros solo hay un ${(power*100).toFixed(1)}% de probabilidad de detectar la diferencia. Necesitas al menos <strong>${nMin80} obs/grupo</strong> para potencia 80%.`;
+
+  const ns = Array.from({length:40},(_,i)=>3+i*8);
+  const powers = ns.map(ni=>{
+    const lam=ni*delta*delta/(2*sigma*sigma);
+    return (1-normalCDF(Z_alpha-Math.sqrt(2*lam)))*100;
+  });
+
+  if(chartPow) chartPow.destroy();
+  chartPow = new Chart(document.getElementById('chartPower'),{
+    type:'line',
+    data:{
+      labels: ns,
+      datasets:[
+        {label:'Potencia (%)',data:powers,borderColor:'#ED1E79',backgroundColor:'rgba(237,30,121,0.1)',borderWidth:2,pointRadius:0,fill:true,tension:0.4},
+        {label:'Diseño actual (n='+n+')',data:ns.map(ni=>ni===n?(1-normalCDF(Z_alpha-Math.sqrt(2*ni*delta*delta/(2*sigma*sigma))))*100:null),pointRadius:8,pointBackgroundColor:'#FDB913',borderColor:'transparent',backgroundColor:'transparent',showLine:false},
+        {label:'80% mínimo',data:ns.map(()=>80),borderColor:'rgba(253,185,19,0.5)',borderDash:[4,4],borderWidth:1,pointRadius:0,fill:false}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:true,
+      plugins:{legend:{labels:{boxWidth:10,font:{size:11}}},tooltip:{callbacks:{label:ctx=>ctx.raw!=null?` ${ctx.dataset.label}: ${ctx.raw?.toFixed(1)}%`:null}}},
+      scales:{
+        y:{min:0,max:100,grid:{color:'rgba(255,255,255,0.05)'},ticks:{callback:v=>v+'%'}},
+        x:{grid:{display:false},title:{display:true,text:'n por grupo',color:'rgba(240,238,248,0.4)',font:{size:11}}}
+      }
+    }
+  });
+}
+
+/* ══════════════ TAB 4: COMPARADOR ══════════════ */
+let chartComp = null;
+function updateComparador() {
+  const S2=1968.5, N=7109704;
+  const calcN=(conf,e)=>{const Z=getZ(conf);return Math.ceil((Z*Z*S2)/(e*e)/(1+(Z*Z*S2)/(e*e*N)));};
+  const nA=calcN(99,1), nB=calcN(90,5);
+  document.getElementById('cmpNA').textContent=nA.toLocaleString();
+  document.getElementById('cmpNB').textContent=nB.toLocaleString();
+
+  const delta=41.1, sigmaDbca=44, sigmaDca=57;
+  const calcF=(sig,n)=>{const ss_trat=2*n*(delta/2)**2,ss_err=(2*(n-1))*sig**2;return (ss_trat/1)/(ss_err/(2*(n-1)));};
+  const FA=calcF(sigmaDbca,100), FB=calcF(sigmaDca,55);
+  const pA=pvalF(FA,1,198), pB=pvalF(FB,1,108);
+
+  const powCalc=(d,s,n)=>{const Z=1.96,lam=n*d*d/(2*s*s);return Math.min(99.9,Math.max(0,(1-normalCDF(Z-Math.sqrt(2*lam)))*100)).toFixed(1)+'%';};
+
+  document.getElementById('cmpFA').textContent=FA.toFixed(1);
+  document.getElementById('cmpFB').textContent=FB.toFixed(1);
+  document.getElementById('cmpPA').textContent=fmtP(pA);
+  document.getElementById('cmpPB').textContent=fmtP(pB);
+  document.getElementById('cmpPowA').textContent=powCalc(delta,sigmaDbca,100);
+  document.getElementById('cmpPowB').textContent=powCalc(delta,sigmaDca,55);
+
+  if(chartComp) chartComp.destroy();
+  chartComp = new Chart(document.getElementById('chartComparador'),{
+    type:'bar',
+    data:{
+      labels:['DCA sin bloque (hipotético)','DBCA con bloque (real)'],
+      datasets:[
+        {label:'CMError',data:[3200,1948],backgroundColor:['rgba(133,183,235,0.6)','rgba(237,30,121,0.6)'],borderColor:['#85B7EB','#ED1E79'],borderWidth:2,borderRadius:8,yAxisID:'y'},
+        {label:'F tratamiento',data:[32,53.7],backgroundColor:['rgba(253,185,19,0.4)','rgba(29,158,117,0.5)'],borderColor:['#FDB913','#1D9E75'],borderWidth:2,borderRadius:8,yAxisID:'y2'}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:true,
+      plugins:{legend:{labels:{boxWidth:10,font:{size:11}}},
+        tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.raw}`}}},
+      scales:{
+        y:{position:'left',grid:{color:'rgba(255,255,255,0.05)'},title:{display:true,text:'CMError',color:'rgba(240,238,248,0.4)',font:{size:11}}},
+        y2:{position:'right',grid:{display:false},title:{display:true,text:'F tratamiento',color:'rgba(240,238,248,0.4)',font:{size:11}},min:0,max:70},
+        x:{grid:{display:false}}
+      }
+    }
+  });
+}
+
+/* ══════════════ RESET FUNCTIONS ══════════════ */
+function resetMuestreo() {
+  document.getElementById('sConf').value  = 95;
+  document.getElementById('sError').value = 3;
+  document.getElementById('sS2').value    = 1969;
+  document.getElementById('sN').value     = 7110000;
+  updateMuestreo();
+}
+
+function resetAnova() {
+  document.getElementById('sMnoOf').value = 282;
+  document.getElementById('sMof').value   = 242;
+  document.getElementById('sMcomp').value = 280;
+  document.getElementById('sMman').value  = 247;
+  document.getElementById('sMnoc').value  = 217;
+  document.getElementById('sSigma').value = 44;
+  document.getElementById('sRep').value   = 55;
+  updateAnova();
+}
+
+function resetPotencia() {
+  document.getElementById('sDelta').value    = 41;
+  document.getElementById('sSigmaPow').value = 44;
+  document.getElementById('sNpow').value     = 55;
+  document.getElementById('sAlpha').value    = 5;
+  document.getElementById('sK').value        = 2;
+  updatePotencia();
+}
+
+/* ── INIT ── */
+updateMuestreo();
+</script>
+</body>
+</html>
