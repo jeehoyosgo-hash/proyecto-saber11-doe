@@ -1375,6 +1375,8 @@ ggplot(mf_ancova,
   theme(legend.position = "top")
 ```
 
+Los tres factores explorados en el factorial — naturaleza, jornada y calendario — se retoman en la Fase IV bajo la estructura 2³, donde cada uno opera con codificación ±1 para el análisis de efectos principales e interacciones.
+
 **Nota sobre superficies de respuesta:** el syllabus pide superficies cuando los factores son **cuantitativos**. Los factores principales aquí son categóricos; el equivalente informativo son los perfiles de interacción y las medias marginales (`emmeans`). La curva de respuesta del ANCOVA cubre el criterio cuantitativo usando el estrato como covariable ordinal.
 
 ---
@@ -1385,7 +1387,11 @@ Se construye un **$2^3$** codificando tres fuentes de variación observables en 
 
 - **A:** naturaleza (NO OFICIAL = +1, OFICIAL = −1).
 - **B:** jornada MAÑANA (+1) vs. resto (−1).
-- **C:** estrato socioeconómico "bajo" (Estrato 1–3 = −1) vs. "alto" (Estrato 4–6 = +1); registros sin estrato válido se excluyen.
+- **C:** calendario escolar (B = −1, A = +1); coherente con el factorial de tres vías 
+  (Fase III). Los tres factores cubren las dimensiones institucionales centrales 
+  de la pregunta de investigación.  
+  
+Se incorpora el calendario escolar (A/B) como Factor C por ser una característica institucional del colegio con potencial efecto sobre el rendimiento, coherente con el factorial de tres vías de Fase III y con la pregunta de investigación centrada en dimensiones estructurales del establecimiento educativo.  
 
 Se agregan **dos pseudo-réplicas** por combinación $(A,B,C)$ partiendo aleatoriamente los estudiantes dentro de cada celda (`set.seed(123)`) para permitir estimación de error y aplicar Daniel/Lenth sobre los efectos calculados a partir de medias por celda.
 
@@ -1393,15 +1399,14 @@ Se agregan **dos pseudo-réplicas** por combinación $(A,B,C)$ partiendo aleator
 
 ```{r f4_2k_datos}
 set.seed(123)
-low_es  <- paste("Estrato", 1:3)
-high_es <- paste("Estrato", 4:6)
 
 xdat <- dbca_data %>%
-  filter(as.character(fami_estratovivienda) %in% c(low_es, high_es)) %>%
+  filter(as.character(cole_calendario) %in% c("A", "B")) %>%
+  droplevels() %>%
   mutate(
-    A = ifelse(cole_naturaleza == "NO OFICIAL", 1, -1),
-    B = ifelse(cole_jornada == "MAÑANA", 1, -1),
-    C = ifelse(fami_estratovivienda %in% low_es, -1, 1)
+    A = ifelse(cole_naturaleza == "NO OFICIAL",  1, -1),
+    B = ifelse(cole_jornada    == "MAÑANA",      1, -1),
+    C = ifelse(cole_calendario == "A",           1, -1)   # A=+1, B=-1
   )
 
 xrep <- xdat %>%
@@ -1470,7 +1475,7 @@ print(tabla_signos, row.names = FALSE)
 cat("\nCodificación de los factores:\n")
 cat("  A: OFICIAL = −1  |  NO OFICIAL = +1\n")
 cat("  B: NOCHE/COMPLETA = −1  |  MAÑANA = +1\n")
-cat("  C: Estrato 1–3 (bajo) = −1  |  Estrato 4–6 (alto) = +1\n\n")
+cat("  C: Calendario B = −1  |  Calendario A = +1\n\n")
 
 # Cálculo de efectos
 co <- coef(mod_2k)
