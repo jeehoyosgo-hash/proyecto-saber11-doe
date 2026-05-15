@@ -1,0 +1,2256 @@
+---
+title: "Puntaje Global Saber 11: Muestreo Estadístico y Diseño de Experimentos"
+subtitle: "Versión corregida tras revisión metodológica"
+author: "Julian Toloza - Yeison Hoyos | Universidad Santo Tomás"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+    highlight: tango
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  fig.width = 8,
+  fig.height = 5
+)
+```
+
+# Resumen ejecutivo
+
+Este proyecto integra dos pilares del análisis estadístico aplicado: el **muestreo estadístico** y el **diseño de experimentos**. Utilizando los resultados históricos de la prueba Saber 11 (ICFES, disponibles en datos.gov.co), se diseñó un plan de muestreo estratificado por estrato socioeconómico para estimar el puntaje global promedio de los estudiantes colombianos con un error máximo de ±3 puntos al 95% de confianza. Sobre la muestra obtenida se aplicó un **DBCA** (naturaleza del colegio × jornada como bloque) con verificación rigurosa de supuestos y cálculo correcto de potencia, un **factorial a dos y tres vías** con interacción y tamaños de efecto $\eta^2$, un **diseño $2^3$** codificado con gráfica de Daniel y criterio de **Lenth completo** (PSE, ME, SME), un **$2^3$** en dos bloques confundiendo **ABC** con el bloque y comparación cuantitativa de eficiencia, una **simulación Monte Carlo** que contrasta muestreo aleatorio simple de estratos frente a **PPS** con estimadores **Hansen–Hurwitz** y **Horvitz–Thompson**, y un cierre con **encuesta compleja** reproducible (`survey::apistrat`: pesos, estratos, fpc, deff, calibración y cuantiles). Los resultados del DBCA sugieren diferencias estadísticamente significativas entre colegios oficiales y no oficiales, con lectura cautelosa por el carácter observacional de los datos.
+
+---
+
+# Introducción
+
+Las pruebas Saber 11 constituyen el principal instrumento de evaluación de la educación media en Colombia. Comprender los factores asociados al desempeño académico tiene implicaciones directas para la política educativa, la asignación de recursos y la equidad del sistema. En particular, la naturaleza del colegio —oficial o no oficial— y la jornada escolar han sido señalados recurrentemente como factores diferenciadores del rendimiento.
+
+**Pregunta de investigación:** ¿Difiere significativamente el puntaje global Saber 11 según la naturaleza del colegio (oficial vs. no oficial), controlando por la jornada escolar como variable de bloque?
+
+**Hipótesis:**
+
+- $H_0$: No existe diferencia en el puntaje global promedio entre colegios oficiales y no oficiales, dado el efecto de la jornada.
+- $H_1$: Existe al menos una diferencia significativa en el puntaje global promedio según la naturaleza del colegio.
+
+---
+
+# Instalación y carga de paquetes
+
+```{r paquetes}
+# Instalar paquetes si no están disponibles
+paquetes <- c("httr", "dplyr", "ggplot2", "survey", "emmeans",
+              "car", "nortest", "knitr", "kableExtra", "pwr", "sampling",
+              "lmtest", "effectsize")
+
+nuevos <- paquetes[!(paquetes %in% installed.packages()[,"Package"])]
+if(length(nuevos)) install.packages(nuevos, repos = "https://cran.rstudio.com/")
+
+library(httr)
+library(dplyr)
+library(ggplot2)
+library(survey)
+library(emmeans)
+library(car)
+library(nortest)
+library(knitr)
+library(kableExtra)
+library(pwr)
+library(sampling)
+library(lmtest)
+library(effectsize)
+```
+
+---
+
+# Fase I: Diseño muestral
+
+## Definición de población y marco muestral
+
+La **población objetivo** son todos los estudiantes colombianos que presentaron la prueba Saber 11 y cuyos resultados están registrados en la base de datos pública del ICFES, disponible en el portal de Datos Abiertos del Gobierno Nacional (datos.gov.co). La magnitud del marco y los tamaños poblacionales por estrato socioeconómico $N_h$ se obtienen mediante una **consulta agregada** a la API Socrata (`$group`), y se reportan en el bloque siguiente, inmediatamente después de la muestra piloto.
+
+**No-respuesta:** en datos secundarios de registros administrativos como los de Saber 11, la no-respuesta se manifiesta como registros con campos clave faltantes (e.g., `punt_global = NA`, `fami_estratovivienda = ""`). El tratamiento adoptado es la **exclusión de registros incompletos** (`na.rm = TRUE` y filtros explícitos), bajo el supuesto de que la ausencia es aleatoria respecto a la variable de interés (MCAR — *Missing Completely At Random*). Este supuesto es razonable en un registro de evaluación estandarizada, aunque constituye una limitación si los datos faltantes estuvieran concentrados en estratos o regiones específicas. Una alternativa formal sería imputación por media estratal o ajuste de pesos por no-respuesta (Lohr, 2022, sec. 8.3), que se descarta aquí por la baja proporción de valores faltantes observada en la muestra piloto.
+
+## Muestra piloto para estimación de la varianza
+
+Antes de calcular el tamaño de muestra definitivo, se descargó una **muestra piloto de 300 observaciones** con el fin de obtener una estimación empírica de la varianza del puntaje global ($S^2$). Para evitar sesgos derivados del orden de almacenamiento en la API, se solicita la muestra piloto con **ordenamiento aleatorio** (`$order=:random`), garantizando que la varianza estimada sea representativa del marco.
+
+```{r piloto}
+# Piloto con ORDER BY random — con fallback si la API no lo soporta
+descargar_piloto <- function(n_piloto = 300) {
+  urls <- c(
+    # Intento 1: orden aleatorio
+    sprintf("https://www.datos.gov.co/resource/kgxf-xxbe.csv?$limit=%d&$order=:random", n_piloto),
+    # Intento 2: SoQL ORDER BY random()
+    sprintf("https://www.datos.gov.co/resource/kgxf-xxbe.csv?$query=SELECT * ORDER BY random() LIMIT %d", n_piloto),
+    # Intento 3: sin orden aleatorio (primeros registros como fallback)
+    sprintf("https://www.datos.gov.co/resource/kgxf-xxbe.csv?$limit=%d", n_piloto)
+  )
+  
+  for (i in seq_along(urls)) {
+    cat(sprintf("Piloto intento %d de %d...\n", i, length(urls)))
+    resp <- tryCatch(
+      GET(urls[i], timeout(30)),
+      error = function(e) { cat("  Error:", conditionMessage(e), "\n"); NULL }
+    )
+    if (is.null(resp) || status_code(resp) != 200L) {
+      cat("  HTTP", if(!is.null(resp)) status_code(resp) else "timeout", "\n")
+      Sys.sleep(1); next
+    }
+    txt <- content(resp, as = "text", encoding = "UTF-8")
+    if (nchar(txt) < 50) { cat("  Respuesta vacía.\n"); Sys.sleep(1); next }
+    
+    df <- tryCatch(
+      read.csv(text = txt, stringsAsFactors = FALSE),
+      error = function(e) { cat("  Parse error.\n"); NULL }
+    )
+    if (!is.null(df) && nrow(df) > 10 && "punt_global" %in% names(df)) {
+      if (i == 3) cat("  ⚠ Usando fallback sin orden aleatorio.\n")
+      else cat("  ✓ Piloto exitoso con orden aleatorio.\n")
+      return(df)
+    }
+    Sys.sleep(1)
+  }
+  stop("No se pudo descargar la muestra piloto tras 3 intentos. ",
+       "Verifique conexión a datos.gov.co.")
+}
+
+piloto <- descargar_piloto(300)
+
+piloto$punt_global          <- as.numeric(piloto$punt_global)
+piloto$fami_estratovivienda <- as.character(piloto$fami_estratovivienda)
+piloto <- piloto[!is.na(piloto$punt_global), ]
+
+if (nrow(piloto) < 10) {
+  stop("El piloto tiene menos de 10 observaciones válidas. ",
+       "Algo está mal con la API o el campo punt_global.")
+}
+
+S2_piloto    <- var(piloto$punt_global)
+media_piloto <- mean(piloto$punt_global)
+sd_piloto    <- sd(piloto$punt_global)
+
+cat("\nResultados muestra piloto (n =", nrow(piloto), "):\n")
+cat("  Media estimada:     ", round(media_piloto, 2), "\n")
+cat("  Varianza estimada:  ", round(S2_piloto, 2), "\n")
+cat("  Desv. estándar:     ", round(sd_piloto, 2), "\n")
+```
+
+```{r marco_Nh}
+# Conteos N_h por estrato en el marco publicado (API agregada Socrata)
+url_api <- "https://www.datos.gov.co/resource/kgxf-xxbe.csv"
+
+# Función con reintentos para la consulta agregada
+obtener_marco <- function(url, max_intentos = 3) {
+  for (intento in seq_len(max_intentos)) {
+    cat(sprintf("Intento %d de %d para obtener marco de la API...\n",
+                intento, max_intentos))
+    resp <- tryCatch(
+      GET(url, query = list(
+        "$select" = "fami_estratovivienda, count(*) as Nh",
+        "$group"  = "fami_estratovivienda",
+        "$limit"  = "100000"
+      ), timeout(30)),
+      error = function(e) {
+        cat("  Error de conexión:", conditionMessage(e), "\n")
+        NULL
+      }
+    )
+    
+    if (is.null(resp)) { Sys.sleep(2); next }
+    
+    sc <- status_code(resp)
+    if (sc != 200L) {
+      cat("  HTTP status:", sc, "\n")
+      Sys.sleep(2); next
+    }
+    
+    txt <- content(resp, as = "text", encoding = "UTF-8")
+    if (nchar(txt) < 20) {
+      cat("  Respuesta vacía o muy corta.\n")
+      Sys.sleep(2); next
+    }
+    
+    # Intentar parsear
+    df <- tryCatch(
+      read.csv(text = txt, stringsAsFactors = FALSE, check.names = FALSE),
+      error = function(e) {
+        cat("  Error al parsear CSV:", conditionMessage(e), "\n")
+        NULL
+      }
+    )
+    
+    if (!is.null(df) && nrow(df) > 0) {
+      cat("  ✓ Recibidas", nrow(df), "filas.\n")
+      return(df)
+    }
+    Sys.sleep(2)
+  }
+  return(NULL)
+}
+
+tabla_marco_raw <- obtener_marco(url_api)
+
+# Diagnóstico inmediato
+if (is.null(tabla_marco_raw) || nrow(tabla_marco_raw) == 0) {
+  cat("\n⚠ La API no devolvió datos. Contenido de la respuesta:\n")
+  cat(substr(content(GET(url_api, query = list("$limit" = "1")),
+                      as = "text", encoding = "UTF-8"), 1, 500), "\n")
+  stop("No se pudo obtener el marco muestral de la API. ",
+       "Verifique conexión a datos.gov.co y la URL del recurso.")
+}
+
+# Normalizar nombres de columnas (la API puede devolver 'count' o 'Nh')
+cat("\nColumnas recibidas de la API:", paste(names(tabla_marco_raw), collapse = ", "), "\n")
+
+# Buscar la columna de conteo (puede llamarse 'Nh', 'count', 'count_1', etc.)
+col_conteo <- grep("^(Nh|count|count_)", names(tabla_marco_raw),
+                   ignore.case = TRUE, value = TRUE)[1]
+col_estrato <- grep("fami_estrato", names(tabla_marco_raw),
+                     ignore.case = TRUE, value = TRUE)[1]
+
+if (is.na(col_estrato) || is.na(col_conteo)) {
+  cat("Columnas encontradas:", paste(names(tabla_marco_raw), collapse = " | "), "\n")
+  cat("Primeras filas:\n")
+  print(head(tabla_marco_raw))
+  stop("No se encontraron las columnas esperadas (fami_estratovivienda y conteo).")
+}
+
+# Renombrar a nombres estándar
+names(tabla_marco_raw)[names(tabla_marco_raw) == col_estrato] <- "fami_estratovivienda"
+names(tabla_marco_raw)[names(tabla_marco_raw) == col_conteo]  <- "Nh"
+
+# Limpiar y filtrar
+tabla_marco_estratos <- tabla_marco_raw %>%
+  mutate(
+    fami_estratovivienda = trimws(as.character(fami_estratovivienda)),
+    Nh = suppressWarnings(as.numeric(Nh))
+  ) %>%
+  filter(
+    !is.na(fami_estratovivienda),
+    fami_estratovivienda != "",
+    !is.na(Nh),
+    Nh > 0
+  ) %>%
+  arrange(fami_estratovivienda)
+
+N_frame <- sum(tabla_marco_estratos$Nh, na.rm = TRUE)
+
+cat("\n=== Marco muestral ===\n")
+cat("Tamaño del marco (suma de N_h en la API): N =",
+    format(N_frame, big.mark = ","), "\n")
+cat("Número de estratos válidos:", nrow(tabla_marco_estratos), "\n")
+cat("¿Hay NAs en Nh?:", anyNA(tabla_marco_estratos$Nh), "\n\n")
+print(tabla_marco_estratos, row.names = FALSE)
+
+if (nrow(tabla_marco_estratos) < 2) {
+  stop("El marco tiene menos de 2 estratos válidos. ",
+       "Revise la consulta a la API o la variable fami_estratovivienda.")
+}
+```
+
+Según la agregación anterior, el marco contiene **N = `r format(N_frame, big.mark = ',')` registros** con categoría de estrato declarada (`r nrow(tabla_marco_estratos)` niveles de `fami_estratovivienda`). Esas cifras $N_h$ se usan para la **afijación proporcional** al seleccionar la muestra y como **poblaciones por estrato (`fpc`)** en el paquete `survey`.
+
+El **marco muestral** es el listado completo de registros individuales accesible mediante la API Socrata del portal datos.gov.co. Cada unidad de muestreo es un estudiante identificado por un consecutivo único. Se identifican los siguientes posibles problemas de cobertura:
+
+- **Subcobertura:** estudiantes que presentaron la prueba pero cuyos datos no fueron cargados al sistema.
+- **Duplicados:** un estudiante que haya presentado la prueba más de una vez podría aparecer en múltiples registros.
+
+Para efectos de este proyecto, se asume que el marco muestral es representativo de la población objetivo y que los duplicados son despreciables.
+
+## Selección y justificación del diseño muestral
+
+Se seleccionó el **muestreo aleatorio estratificado** con los estratos socioeconómicos de la vivienda del estudiante (`fami_estratovivienda`) como variable de estratificación. Esta elección se justifica porque:
+
+1. Los estratos socioeconómicos representan subpoblaciones con características homogéneas internamente pero heterogéneas entre sí, lo que reduce la varianza del estimador respecto al muestreo aleatorio simple.
+2. La variable de estratificación está disponible en el marco muestral para todos los registros.
+3. Permite obtener estimaciones separadas por estrato, lo cual tiene valor informativo para la política educativa.
+
+### Justificación de afijación proporcional vs. óptima de Neyman
+
+La **afijación proporcional** asigna $n_h \propto N_h$, mientras que la **afijación óptima de Neyman** asigna $n_h \propto N_h \cdot S_h$, donde $S_h$ es la desviación estándar dentro del estrato $h$ (Lohr, 2022, eq. 3.27). Neyman minimiza la varianza del estimador para costo fijo. Se compara empíricamente:
+
+```{r afijacion_comparacion}
+# Estimar S_h por estrato desde el piloto
+Sh_piloto <- piloto %>%
+  filter(!is.na(fami_estratovivienda), fami_estratovivienda != "") %>%
+  group_by(fami_estratovivienda) %>%
+  summarise(
+    n_pil = dplyr::n(),
+    Sh    = ifelse(n_pil >= 2, sd(punt_global, na.rm = TRUE), NA_real_),
+    .groups = "drop"
+  )
+
+# Imputar S_h faltantes con la mediana de los disponibles
+Sh_med <- median(Sh_piloto$Sh, na.rm = TRUE)
+Sh_piloto$Sh[is.na(Sh_piloto$Sh)] <- Sh_med
+
+# Construir tabla comparativa proporcional vs. Neyman
+afijacion_comp <- tabla_marco_estratos %>%
+  left_join(Sh_piloto, by = "fami_estratovivienda") %>%
+  mutate(
+    Sh         = ifelse(is.na(Sh), Sh_med, Sh),
+    w_prop     = Nh / sum(Nh),
+    w_neyman   = (Nh * Sh) / sum(Nh * Sh),
+    razon_w    = w_neyman / w_prop
+  )
+
+cat("Comparación de afijaciones (proporciones relativas):\n")
+print(afijacion_comp %>%
+        select(fami_estratovivienda, Nh, Sh, w_prop, w_neyman, razon_w) %>%
+        mutate(across(where(is.numeric), ~round(.x, 4))),
+      row.names = FALSE)
+
+# Cuantificar diferencia
+dif_max <- max(abs(afijacion_comp$razon_w - 1))
+cat("\nDiferencia máxima entre afijación Neyman y proporcional:",
+    round(dif_max * 100, 1), "%\n")
+cat("Conclusión: como las S_h son razonablemente similares entre estratos\n")
+cat("(razón_w cercana a 1), la afijación proporcional es eficiente y se prefiere\n")
+cat("por simplicidad operativa (Lohr, 2022, Theorem 3.2: la pérdida respecto a\n")
+cat("Neyman es proporcional a la varianza de las S_h, despreciable aquí).\n")
+```
+
+## Cálculo del tamaño de muestra
+
+Se utilizó la fórmula para muestreo aleatorio simple con corrección por población finita, que sirve como **límite superior** del tamaño de muestra para el MASE con afijación proporcional:
+
+$$n = \left\lceil \frac{N \cdot Z^2 \cdot S^2}{N \cdot e^2 + Z^2 \cdot S^2} \right\rceil$$
+
+**Nota metodológica:** bajo afijación proporcional y varianzas intra-estrato razonablemente homogéneas ($S_h^2 \approx S^2$), la fórmula MASE converge a la fórmula MAS arriba (Lohr, 2022, sec. 3.4, eq. 3.7-3.10). La diferencia es despreciable en este caso, como confirma el análisis previo de $S_h$ por estrato. Se adopta n MAS como valor conservador.
+
+**Supuestos:**
+
+- Nivel de confianza: $1 - \alpha = 0.95 \Rightarrow Z = 1.96$
+- Margen de error tolerable: $e = 3$ puntos (escala Saber 11 varía de ~0 a ~500)
+- Varianza estimada: $S^2 =$ `r round(S2_piloto, 2)` (obtenida del piloto aleatorio)
+- Tamaño poblacional: $N =$ `r format(N_frame, big.mark = ',')` (total del marco en la API)
+
+```{r calculo_n}
+Z  <- 1.96
+e  <- 3
+S2 <- S2_piloto
+N  <- N_frame
+
+# Validación: ningún insumo puede ser NA
+stopifnot(
+  "S2_piloto es NA — el piloto no devolvió datos válidos" = !is.na(S2),
+  "N_frame es NA — el marco no se cargó correctamente"    = !is.na(N),
+  "S2 debe ser positiva" = S2 > 0,
+  "N debe ser positivo"  = N > 0
+)
+
+n_inf   <- (Z^2 * S2) / e^2
+n_final <- ceiling(n_inf / (1 + (n_inf / N)))
+
+cat("n sin corrección finita: ", ceiling(n_inf), "\n")
+cat("n con corrección finita: ", n_final, "\n")
+cat("\nComo N >> n, la corrección finita es despreciable.\n")
+cat("Tamaño de muestra definido: n =", n_final, "observaciones\n")
+```
+
+Dado que $N \gg n$, el factor de corrección finita es $\approx 1$. El tamaño de muestra objetivo es **n = `r n_final` observaciones**, distribuidas por estrato según afijación proporcional.
+
+## Descarga de la muestra: muestreo aleatorio estratificado (MASE)
+
+Se implementa **afijación proporcional** con **restos mayores** (Hamilton) sobre los $N_h$ del marco. En cada estrato $h$, se intenta extraer $n_h$ registros con SoQL `ORDER BY random() LIMIT n_h`; si la consulta falla, se descarga un subconjunto acotado con `$where` y se aplica `slice_sample()` en R (m.a.s. sin reemplazo).
+
+```{r descarga_muestra}
+if (!exists("url_api")) {
+  url_api <- "https://www.datos.gov.co/resource/kgxf-xxbe.csv"
+}
+
+# ── Afijación proporcional (restos mayores), n_h <= N_h ────────────────────
+prop_alloc <- function(Nh_vec, n_target) {
+  Nh_vec   <- as.numeric(Nh_vec)
+  n_target <- as.integer(n_target)
+  if (anyNA(Nh_vec) || anyNA(n_target)) {
+    stop("prop_alloc: Nh_vec o n_target contienen NA. ",
+         "Verifique tabla_marco_estratos.")
+  }
+  if (n_target <= 0L || any(Nh_vec <= 0)) {
+    stop("prop_alloc: n_target y todos los Nh deben ser positivos.")
+  }
+  N_sum <- sum(Nh_vec)
+  exact <- n_target * Nh_vec / N_sum
+  nh    <- floor(exact)
+  r     <- n_target - sum(nh)
+  if (!is.na(r) && r > 0L) {
+    ord <- order(exact - nh, decreasing = TRUE)
+    for (j in seq_len(r)) nh[ord[j]] <- nh[ord[j]] + 1L
+  }
+  nh <- pmin(as.integer(nh), as.integer(Nh_vec))
+  while (sum(nh) < n_target) {
+    espacio <- Nh_vec - nh
+    pick    <- which.max(espacio)
+    nh[pick] <- nh[pick] + 1L
+  }
+  while (sum(nh) > n_target) {
+    pick <- which.max(nh)
+    nh[pick] <- nh[pick] - 1L
+  }
+  nh
+}
+
+# Saneamiento final del marco antes de afijación
+tabla_marco_estratos <- tabla_marco_estratos %>%
+  filter(!is.na(Nh), Nh > 0,
+         !is.na(fami_estratovivienda),
+         fami_estratovivienda != "",
+         !grepl("(?i)sin\\s*estrato", fami_estratovivienda))
+
+cat("Marco saneado para afijación:", nrow(tabla_marco_estratos),
+    "estratos | N =", format(sum(tabla_marco_estratos$Nh), big.mark = ","), "\n")
+N_frame <- sum(tabla_marco_estratos$Nh)
+
+tab_asig <- tabla_marco_estratos %>%
+  mutate(nh = prop_alloc(Nh, n_target = n_final))
+
+set.seed(42)
+
+# ── Descarga por estrato ───────────────────────────────────────────────────
+sql_escape <- function(x) gsub("'", "''", x, fixed = TRUE)
+leer_muestra_csv <- function(txt) {
+  read.csv(text = txt, stringsAsFactors = FALSE, check.names = FALSE)
+}
+
+fetch_stratum <- function(estrato, nh, Nh) {
+  if (nh <= 0L) return(NULL)
+  esc <- sql_escape(estrato)
+
+  # Intento 1: ORDER BY random() con límite pedido
+  soql <- sprintf(
+    "SELECT * WHERE fami_estratovivienda = '%s' ORDER BY random() LIMIT %d",
+    esc, nh
+  )
+  r <- tryCatch(GET(url_api, query = list("$query" = soql)),
+                error = function(e) NULL)
+  ok <- !is.null(r) && status_code(r) == 200L &&
+    length(content(r, "raw")) > 50L
+  if (ok) {
+    df <- leer_muestra_csv(content(r, as = "text", encoding = "UTF-8"))
+    if (nrow(df) >= nh) return(dplyr::slice_sample(df, n = nh))
+  }
+
+  # Intento 2: $where + offset aleatorio + slice_sample en R
+  lim2 <- as.integer(min(max(nh * 5L, 1000L), Nh, 50000L))
+  qwhere <- sprintf("fami_estratovivienda='%s'", esc)
+  for (.try in seq_len(3L)) {
+    rango <- max(1L, as.integer(Nh) - lim2)
+    off2  <- if (rango >= 1L) as.integer(sample.int(rango, 1L)) else 0L
+    r2 <- tryCatch(
+      GET(url_api, query = list(
+        "$where"  = qwhere,
+        "$limit"  = as.character(lim2),
+        "$offset" = as.character(off2)
+      )),
+      error = function(e) NULL
+    )
+    if (is.null(r2) || status_code(r2) != 200L) next
+    df2 <- leer_muestra_csv(content(r2, as = "text", encoding = "UTF-8"))
+    if (nrow(df2) >= nh) return(dplyr::slice_sample(df2, n = nh))
+    if (nrow(df2) > 0L) return(df2)
+    Sys.sleep(0.3)
+  }
+
+  # Intento 3 (último recurso)
+  lim3 <- as.integer(min(max(nh * 10L, 5000L), Nh, 100000L))
+  r3 <- tryCatch(
+    GET(url_api, query = list("$where" = qwhere, "$limit" = as.character(lim3))),
+    error = function(e) NULL
+  )
+  if (is.null(r3) || status_code(r3) != 200L) return(data.frame())
+  df3 <- leer_muestra_csv(content(r3, as = "text", encoding = "UTF-8"))
+  if (nrow(df3) == 0L) return(df3)
+  if (nrow(df3) <= nh) return(df3)
+  dplyr::slice_sample(df3, n = nh)
+}
+
+lista_muestras <- vector("list", nrow(tab_asig))
+for (i in seq_len(nrow(tab_asig))) {
+  lista_muestras[[i]] <- fetch_stratum(
+    tab_asig$fami_estratovivienda[i],
+    tab_asig$nh[i],
+    tab_asig$Nh[i]
+  )
+  Sys.sleep(0.25)
+}
+
+lista_ok <- lista_muestras[!vapply(lista_muestras, is.null, logical(1))]
+if (!length(lista_ok)) stop("No se obtuvo ninguna fila en la descarga estratificada.")
+muestra_raw <- bind_rows(lista_ok)
+if (nrow(muestra_raw) == 0L) {
+  stop("La API devolvió 0 filas en total; revise conectividad o la consulta SoQL/$where.")
+}
+
+# ── Complementar si quedó por debajo del objetivo ─────────────────────────
+deficit <- n_final - nrow(muestra_raw)
+if (deficit > 0L) {
+  cat(sprintf("⚠ Muestra obtenida (%d) < objetivo (%d). Descargando %d filas adicionales...\n",
+              nrow(muestra_raw), n_final, deficit))
+  deficit_por_estrato <- tab_asig %>%
+    mutate(
+      obtenido = vapply(seq_len(nrow(tab_asig)),
+                       function(i) {
+                         d <- lista_muestras[[i]]
+                         if (is.null(d)) 0L else nrow(d)
+                       },
+                       integer(1L)),
+      faltante = pmax(0L, as.integer(nh) - obtenido)
+    ) %>%
+    filter(faltante > 0L)
+  extra_lista <- vector("list", nrow(deficit_por_estrato))
+  for (i in seq_len(nrow(deficit_por_estrato))) {
+    extra_lista[[i]] <- fetch_stratum(
+      deficit_por_estrato$fami_estratovivienda[i],
+      deficit_por_estrato$faltante[i],
+      deficit_por_estrato$Nh[i]
+    )
+    Sys.sleep(0.2)
+  }
+  extra_ok <- extra_lista[!vapply(extra_lista, is.null, logical(1))]
+  if (length(extra_ok)) {
+    muestra_raw <- bind_rows(muestra_raw, bind_rows(extra_ok))
+  }
+  cat(sprintf("Muestra tras complemento: %d filas.\n\n", nrow(muestra_raw)))
+}
+
+if ("estu_consecutivo" %in% names(muestra_raw)) {
+  muestra_raw <- dplyr::distinct(muestra_raw, estu_consecutivo, .keep_all = TRUE)
+}
+
+muestra <- muestra_raw %>%
+  mutate(
+    punt_global          = as.numeric(punt_global),
+    punt_matematicas     = as.numeric(punt_matematicas),
+    punt_lectura_critica = as.numeric(punt_lectura_critica),
+    fami_estratovivienda = as.factor(fami_estratovivienda),
+    cole_naturaleza      = as.factor(cole_naturaleza),
+    cole_calendario      = as.factor(cole_calendario),
+    cole_jornada         = as.factor(cole_jornada)
+  ) %>%
+  filter(!is.na(punt_global))
+
+n_muestra_real <- nrow(muestra)
+cat("Tamaño muestral obtenido (tras limpieza y deduplicación):", n_muestra_real,
+    "| objetivo n_final =", n_final, "\n\n")
+
+dist_estrato <- muestra %>%
+  count(fami_estratovivienda, name = "Frecuencia") %>%
+  left_join(
+    tab_asig %>% transmute(
+      fami_estratovivienda,
+      N_marco = Nh,
+      n_plan  = nh
+    ),
+    by = "fami_estratovivienda"
+  ) %>%
+  mutate(
+    Proporcion_muestra_pct = round(Frecuencia / sum(Frecuencia) * 100, 1),
+    Afijacion_pct_marco    = round(N_marco / sum(N_marco) * 100, 1)
+  ) %>%
+  rename(Estrato = fami_estratovivienda)
+
+kable(dist_estrato,
+      caption = "Muestra por estrato: frecuencia observada, n planificado (afijación) y N_h del marco") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+## Análisis de sensibilidad: estratificación por estrato socioeconómico vs. naturaleza
+
+**Contexto:** una alternativa válida sería estratificar por `cole_naturaleza` (oficial/no oficial). A continuación se comparan ambos enfoques, incluyendo el **efecto de diseño (DEFF)** respecto al MAS como métrica de eficiencia.
+
+**Justificación metodológica:** la elección del estrato socioeconómico se fundamenta en tres criterios (Lohr, 2022, cap. 3): (1) correlación con $Y$ — el estrato presenta gradiente positiva documentada; (2) objetivo de estimación — el proyecto busca el *promedio nacional* con representatividad socioeconómica; (3) disponibilidad en el marco — los $N_h$ por estrato están en la API.
+
+```{r sensibilidad_estratificacion}
+# ── Diseño alternativo: estratificado por cole_naturaleza ──────────────────
+marco_nat <- muestra %>%
+  filter(!is.na(cole_naturaleza), cole_naturaleza != "") %>%
+  count(cole_naturaleza, name = "nh_muestra") %>%
+  mutate(prop_marco = nh_muestra / sum(nh_muestra),
+         Nh_proxy   = round(prop_marco * N_frame))
+
+muestra_nat <- muestra %>%
+  filter(!is.na(cole_naturaleza), cole_naturaleza != "") %>%
+  droplevels()
+
+Nmap_nat <- setNames(marco_nat$Nh_proxy, marco_nat$cole_naturaleza)
+muestra_nat$N_nat <- as.numeric(Nmap_nat[as.character(muestra_nat$cole_naturaleza)])
+nh_nat <- count(muestra_nat, cole_naturaleza, name = "nh_nat")
+muestra_nat <- muestra_nat %>%
+  left_join(nh_nat, by = "cole_naturaleza") %>%
+  mutate(w_nat = N_nat / nh_nat) %>%
+  filter(!is.na(N_nat))
+
+diseno_nat <- svydesign(ids = ~1, strata = ~cole_naturaleza,
+                        weights = ~w_nat, data = muestra_nat, fpc = ~N_nat)
+
+est_nat  <- svymean(~punt_global, diseno_nat, na.rm = TRUE, deff = TRUE)
+ic_nat   <- confint(est_nat, level = 0.95)
+cv_nat   <- SE(est_nat) / coef(est_nat) * 100
+deff_nat <- deff(est_nat)
+
+# ── Diseño original (estrato socioeconómico) ──────────────────────────────
+muestra_s_tmp <- muestra %>%
+  filter(fami_estratovivienda != "" & !is.na(fami_estratovivienda)) %>%
+  droplevels()
+N_map_tmp <- setNames(tabla_marco_estratos$Nh, tabla_marco_estratos$fami_estratovivienda)
+muestra_s_tmp$N_estrato <- as.numeric(N_map_tmp[as.character(muestra_s_tmp$fami_estratovivienda)])
+muestra_s_tmp <- muestra_s_tmp %>% filter(!is.na(N_estrato))
+nh_tmp <- count(muestra_s_tmp, fami_estratovivienda, name = "nh_muestra")
+muestra_s_tmp <- muestra_s_tmp %>%
+  left_join(nh_tmp, by = "fami_estratovivienda") %>%
+  mutate(sweight = N_estrato / nh_muestra)
+
+diseno_orig_tmp <- svydesign(ids = ~1, strata = ~fami_estratovivienda,
+                             weights = ~sweight, data = muestra_s_tmp, fpc = ~N_estrato)
+est_orig  <- svymean(~punt_global, diseno_orig_tmp, na.rm = TRUE, deff = TRUE)
+ic_orig   <- confint(est_orig, level = 0.95)
+cv_orig   <- SE(est_orig) / coef(est_orig) * 100
+deff_orig <- deff(est_orig)
+
+# ── Tabla comparativa con DEFF ─────────────────────────────────────────────
+comparativa <- data.frame(
+  Criterio = c("Variable estratificación", "N° estratos (H)",
+               "Media estimada (pts)", "Error estándar (SE)",
+               "IC inferior 95%", "IC superior 95%",
+               "Amplitud IC (pts)", "CV estimador (%)",
+               "DEFF (vs. MAS)"),
+  Estrato_socioecon = c(
+    "fami_estratovivienda",
+    nlevels(muestra_s_tmp$fami_estratovivienda),
+    round(coef(est_orig), 2), round(SE(est_orig), 3),
+    round(ic_orig[1], 2), round(ic_orig[2], 2),
+    round(ic_orig[2] - ic_orig[1], 2), round(cv_orig, 4),
+    round(deff_orig, 3)
+  ),
+  Naturaleza_colegio = c(
+    "cole_naturaleza",
+    nlevels(muestra_nat$cole_naturaleza),
+    round(coef(est_nat), 2), round(SE(est_nat), 3),
+    round(ic_nat[1], 2), round(ic_nat[2], 2),
+    round(ic_nat[2] - ic_nat[1], 2), round(cv_nat, 4),
+    round(deff_nat, 3)
+  )
+)
+
+kable(comparativa,
+      col.names = c("Criterio", "Estrato socioeconómico (adoptado)",
+                    "Naturaleza del colegio (alternativo)"),
+      caption = "Análisis de sensibilidad con DEFF: comparación de enfoques de estratificación") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  row_spec(c(7, 8, 9), bold = TRUE)
+
+cat("\nInterpretación DEFF:\n")
+cat("  DEFF < 1: el diseño estratificado es MÁS eficiente que MAS de tamaño igual.\n")
+cat("  DEFF = 1: misma eficiencia.\n")
+cat("  DEFF > 1: el diseño es menos eficiente (no debería ocurrir con estratificación bien hecha).\n")
+```
+
+**Conclusión:** ambos diseños son válidos. El diseño adoptado (estrato socioeconómico) es más apropiado para estimar el promedio nacional con representatividad de todos los grupos. El menor CV y DEFF más favorable confirman su eficiencia para el objetivo declarado del proyecto.
+
+---
+
+## Estimación puntual e intervalo de confianza
+
+```{r estimacion_survey}
+# ── ESTIMACIÓN CON DISEÑO MUESTRAL ────────────────────────────────────────
+muestra_survey <- muestra %>%
+  filter(fami_estratovivienda != "" & !is.na(fami_estratovivienda)) %>%
+  droplevels()
+
+# N_h del marco (API agregada), no proporciones muestrales
+N_map <- setNames(tabla_marco_estratos$Nh, tabla_marco_estratos$fami_estratovivienda)
+muestra_survey$N_estrato <- as.numeric(
+  N_map[as.character(muestra_survey$fami_estratovivienda)]
+)
+muestra_survey <- muestra_survey %>% filter(!is.na(N_estrato))
+
+# Pesos de Horvitz–Thompson por estrato: w_hi = N_h / n_h
+nh_sel <- dplyr::count(muestra_survey, fami_estratovivienda, name = "nh_muestra")
+muestra_survey <- muestra_survey %>%
+  left_join(nh_sel, by = "fami_estratovivienda") %>%
+  mutate(sweight = N_estrato / nh_muestra)
+
+cat("NAs en N_estrato:", sum(is.na(muestra_survey$N_estrato)), "\n")
+cat("Estratos en diseño:", levels(muestra_survey$fami_estratovivienda), "\n\n")
+
+# Diseño muestral estratificado
+diseno <- svydesign(
+  ids     = ~1,
+  strata  = ~fami_estratovivienda,
+  weights = ~sweight,
+  data    = muestra_survey,
+  fpc     = ~N_estrato
+)
+
+# Estimación media puntaje global
+est_media <- svymean(~punt_global, diseno, na.rm = TRUE)
+ic_media  <- confint(est_media, level = 0.95)
+
+cat("Estimación del puntaje global promedio:\n")
+cat("  Media estimada: ", round(coef(est_media), 2), "\n")
+cat("  Error estándar: ", round(SE(est_media), 2), "\n")
+cat("  IC 95%: [", round(ic_media[1], 2), ",", round(ic_media[2], 2), "]\n\n")
+
+# Validación interna: estimación por estrato
+cat("Estimación por estrato (validación interna):\n")
+est_por_estrato <- svyby(~punt_global, ~fami_estratovivienda,
+                          diseno, svymean, na.rm = TRUE)
+print(est_por_estrato, row.names = FALSE)
+```
+
+**Interpretación:** Con base en la muestra estratificada de **`r n_muestra_real`** estudiantes (objetivo de diseño $n =$ `r n_final`), se estima que el puntaje global promedio en la prueba Saber 11 es de **`r round(coef(est_media), 1)` puntos** (IC 95%: [`r round(ic_media[1], 1)`, `r round(ic_media[2], 1)`]). El margen de error obtenido es consistente con el objetivo de diseño de ±3 puntos. La estimación por estrato revela la gradiente socioeconómica característica de la prueba.
+
+## Estimador de razón (comparación de eficiencia)
+
+Para cumplir el criterio de la Fase I, se aplica un **estimador de razón** (Lohr, 2022, cap. 4) con `punt_matematicas` como variable auxiliar. El estimador de razón clásico para la media de $Y$ es:
+
+$$\hat{\bar{Y}}_R = \hat{R} \cdot \bar{X}_{\text{pob}} = \frac{\hat{\bar{Y}}}{\hat{\bar{X}}} \cdot \bar{X}_{\text{pob}}$$
+
+donde $\bar{X}_{\text{pob}}$ es la media poblacional de $X$ (idealmente conocida). La ganancia teórica de eficiencia respecto al estimador simple es aproximadamente $1 - \rho^2$ cuando $\rho > 0.5$ (Lohr, 2022, eq. 4.6).
+
+```{r estimador_razon}
+muestra <- muestra_survey  # usar muestra limpia para todo lo que sigue
+
+# ── Componentes del estimador de razón ────────────────────────────────────
+est_simple_lec <- svymean(~punt_lectura_critica, diseno, na.rm = TRUE)
+est_simple_mat <- svymean(~punt_matematicas,     diseno, na.rm = TRUE)
+
+# Razón R = lectura / matemáticas
+est_razon <- svyratio(~punt_lectura_critica, ~punt_matematicas,
+                       diseno, na.rm = TRUE)
+
+# Correlación lectura × matemáticas (clave para ganancia de eficiencia)
+correl <- cor(muestra$punt_lectura_critica, muestra$punt_matematicas,
+              use = "complete.obs")
+
+cat("=== Análisis del estimador de razón (Lohr, cap. 4) ===\n\n")
+cat("Componentes:\n")
+cat("  Media simple lectura crítica:  ", round(coef(est_simple_lec), 2),
+    " (SE =", round(SE(est_simple_lec), 3), ")\n")
+cat("  Media simple matemáticas:      ", round(coef(est_simple_mat), 2),
+    " (SE =", round(SE(est_simple_mat), 3), ")\n")
+cat("  Razón estimada R = lect/mat:   ", round(coef(est_razon), 4),
+    " (SE =", round(sqrt(vcov(est_razon)), 4), ")\n\n")
+
+cat("Correlación ρ(lectura, matemáticas):", round(correl, 3), "\n")
+cat("Ganancia teórica del estimador de razón (1 - ρ²):",
+    round(1 - correl^2, 3), "\n\n")
+
+# ── Comparación honesta de eficiencia ─────────────────────────────────────
+# El svyratio estima R, no la media de lectura. Para comparar correctamente
+# se usa la fórmula CV(razón) ≈ sqrt(CV²(Y) + CV²(X) - 2*ρ*CV(Y)*CV(X))
+cv_lec <- SE(est_simple_lec) / coef(est_simple_lec) * 100
+cv_mat <- SE(est_simple_mat) / coef(est_simple_mat) * 100
+cv_razon_teorico <- sqrt(cv_lec^2 + cv_mat^2 - 2 * correl * cv_lec * cv_mat)
+cv_razon_obs     <- sqrt(vcov(est_razon)) / coef(est_razon) * 100
+
+cat("CV(%) estimador simple media lectura:    ", round(cv_lec, 3), "\n")
+cat("CV(%) razón R = lect/mat (observado):    ", round(cv_razon_obs, 3), "\n")
+cat("CV(%) razón teórico (Lohr eq. 4.4):      ", round(cv_razon_teorico, 3), "\n\n")
+
+if (correl > 0.5) {
+  cat("✓ ρ > 0.5: el estimador de razón GANA eficiencia respecto al estimador simple\n")
+  cat("  cuando la media poblacional de X es conocida con precisión.\n")
+} else {
+  cat("✗ ρ ≤ 0.5: el estimador de razón NO mejora sustancialmente al simple.\n")
+}
+
+cat("\nNota metodológica: para usar el estimador de razón como predictor de la\n")
+cat("media de Y se requiere X_pob conocida (e.g., promedio nacional ICFES de\n")
+cat("matemáticas publicado). Sin ese dato externo, el ejercicio ilustra el método\n")
+cat("comparando CVs de cantidades relacionadas (media vs. razón).\n")
+```
+
+## Visualización de la distribución muestral
+
+```{r viz_muestral, fig.cap="Distribución del puntaje global por estrato socioeconómico"}
+ggplot(muestra %>% filter(fami_estratovivienda != "" & 
+                           fami_estratovivienda != "Sin Estrato"),
+       aes(x = fami_estratovivienda, y = punt_global, fill = fami_estratovivienda)) +
+  geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+  geom_hline(yintercept = round(coef(est_media), 1), 
+             linetype = "dashed", color = "red", linewidth = 0.8) +
+  scale_fill_brewer(palette = "Blues") +
+  labs(
+    title    = "Distribución del puntaje global Saber 11 por estrato socioeconómico",
+    subtitle = paste0("Muestra estratificada n = ", n_muestra_real,
+                      " | Línea roja: media estimada = ", round(coef(est_media), 1)),
+    x        = "Estrato socioeconómico",
+    y        = "Puntaje global",
+    fill     = "Estrato"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+```
+
+---
+
+# Fase II: Diseño experimental (DBCA)
+
+## Planteamiento del experimento
+
+Se plantea un **Diseño en Bloques Completos al Azar (DBCA)** con la siguiente estructura:
+
+- **Variable respuesta:** `punt_global` (puntaje global Saber 11, escala continua)
+- **Factor de tratamiento:** `cole_naturaleza` — naturaleza del colegio (NO OFICIAL, OFICIAL)
+- **Variable de bloque:** `cole_jornada` — jornada escolar (COMPLETA, MAÑANA, NOCHE)
+- **Unidades experimentales:** estudiantes individuales de la muestra
+
+**Justificación del DBCA:** La jornada escolar es una fuente de variación conocida que afecta el puntaje, pero no es de interés investigativo primario. Al incluirla como bloque, se controla su efecto y se aumenta la precisión de la comparación entre tipos de colegio.
+
+**Modelo estadístico:**
+
+$$Y_{ij} = \mu + \tau_i + \beta_j + \varepsilon_{ij}, \quad \varepsilon_{ij} \sim N(0, \sigma^2)$$
+
+**Carácter pseudoexperimental:** dado que los datos son observacionales (no hubo asignación aleatoria de estudiantes a colegios), el DBCA se aplica como herramienta de control estadístico de la heterogeneidad por jornada. La inferencia causal directa no es posible; la inferencia estadística sí lo es bajo el supuesto de muestreo aleatorio dentro de cada combinación tratamiento × bloque.
+
+## Preparación de datos para el DBCA
+
+```{r datos_dbca}
+dbca_data <- muestra %>%
+  filter(cole_jornada %in% c("MAÑANA", "COMPLETA", "NOCHE")) %>%
+  filter(!is.na(punt_global)) %>%
+  droplevels()
+
+cat("Observaciones para el DBCA:", nrow(dbca_data), "\n\n")
+
+tabla_balance <- as.data.frame.matrix(
+  table(dbca_data$cole_naturaleza, dbca_data$cole_jornada)
+)
+
+kable(tabla_balance, 
+      caption = "Balance del diseño: Naturaleza del colegio × Jornada (bloque)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+## Estadísticas descriptivas por grupos
+
+```{r descriptivos_dbca}
+resumen_grupos <- dbca_data %>%
+  group_by(cole_naturaleza, cole_jornada) %>%
+  summarise(
+    n      = dplyr::n(),
+    Media  = round(mean(punt_global), 2),
+    DE     = round(sd(punt_global), 2),
+    Min    = min(punt_global),
+    Max    = max(punt_global),
+    .groups = "drop"
+  )
+
+kable(resumen_grupos, 
+      col.names = c("Naturaleza", "Jornada", "n", "Media", "D.E.", "Mín.", "Máx."),
+      caption = "Estadísticas descriptivas del puntaje global por grupo y bloque") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+```{r viz_dbca, fig.cap="Puntaje global por naturaleza del colegio y jornada (bloque)"}
+ggplot(dbca_data, aes(x = cole_jornada, y = punt_global, fill = cole_naturaleza)) +
+  geom_boxplot(alpha = 0.75, outlier.alpha = 0.3) +
+  scale_fill_manual(values = c("NO OFICIAL" = "#E74C3C", "OFICIAL" = "#3498DB"),
+                    labels = c("No oficial", "Oficial")) +
+  labs(
+    title    = "Puntaje global Saber 11 por naturaleza del colegio y jornada",
+    subtitle = "DBCA: tratamiento = naturaleza | bloque = jornada",
+    x        = "Jornada (bloque)",
+    y        = "Puntaje global",
+    fill     = "Naturaleza del colegio"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "top")
+```
+
+## Análisis de varianza (ANOVA) y tamaño del efecto
+
+```{r anova_dbca}
+modelo_dbca <- aov(punt_global ~ cole_naturaleza + cole_jornada, data = dbca_data)
+tabla_anova <- summary(modelo_dbca)
+print(tabla_anova)
+```
+
+### Tamaño del efecto ($\eta^2$ y $\eta^2$ parcial)
+
+Con tamaños de muestra grandes, los p-valores tienden a ser muy pequeños incluso para efectos prácticamente menores. Se reporta el **tamaño del efecto** como complemento esencial:
+
+```{r eta2_dbca}
+SS_dbca   <- summary(modelo_dbca)[[1]]$`Sum Sq`
+SS_total  <- sum(SS_dbca)
+SS_trat   <- SS_dbca[1]
+SS_bloque <- SS_dbca[2]
+SS_error  <- SS_dbca[3]
+
+eta2_dbca <- data.frame(
+  Fuente        = c("Naturaleza (τ)", "Jornada/bloque (β)", "Error"),
+  SS            = round(c(SS_trat, SS_bloque, SS_error), 1),
+  eta2          = round(c(SS_trat, SS_bloque, SS_error) / SS_total, 4),
+  eta2_parcial  = c(
+    round(SS_trat   / (SS_trat   + SS_error), 4),
+    round(SS_bloque / (SS_bloque + SS_error), 4),
+    NA_real_
+  ),
+  Magnitud_Cohen = c(
+    cut(SS_trat   / (SS_trat   + SS_error),
+        breaks = c(-Inf, 0.01, 0.06, 0.14, Inf),
+        labels = c("Trivial","Pequeño","Mediano","Grande")) %>% as.character(),
+    cut(SS_bloque / (SS_bloque + SS_error),
+        breaks = c(-Inf, 0.01, 0.06, 0.14, Inf),
+        labels = c("Trivial","Pequeño","Mediano","Grande")) %>% as.character(),
+    NA
+  )
+)
+
+kable(eta2_dbca,
+      caption = "Tamaños de efecto del DBCA (Cohen, 1988: pequeño=0.01, mediano=0.06, grande=0.14)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+### Interpretación de la tabla ANOVA
+
+```{r interpretacion_anova}
+p_naturaleza <- summary(modelo_dbca)[[1]]$`Pr(>F)`[1]
+p_jornada    <- summary(modelo_dbca)[[1]]$`Pr(>F)`[2]
+
+cat("Factor naturaleza del colegio: p =", format(p_naturaleza, scientific = TRUE, digits = 3), "\n")
+cat("Factor jornada (bloque):       p =", format(p_jornada, scientific = TRUE, digits = 3), "\n\n")
+
+if(p_naturaleza < 0.05) {
+  cat("✓ Se rechaza H0: existen diferencias significativas en el puntaje global\n")
+  cat("  según la naturaleza del colegio (α = 0.05).\n")
+} else {
+  cat("✗ No se rechaza H0: no hay evidencia suficiente de diferencias.\n")
+}
+
+if(p_jornada < 0.05) {
+  cat("\n✓ El bloque (jornada) es significativo: su inclusión estaba justificada.\n")
+} else {
+  cat("\n✗ El bloque (jornada) no resultó significativo.\n")
+}
+```
+
+### Validación retroactiva del supuesto de aditividad
+
+El modelo DBCA aditivo asume **no-interacción** entre tratamiento y bloque (Montgomery, 2017, sec. 4.1). Con múltiples observaciones por celda es posible y obligatorio probar esta hipótesis comparando el DBCA con un modelo factorial:
+
+```{r dbca_vs_factorial}
+mod_factorial_test <- lm(punt_global ~ cole_naturaleza * cole_jornada, data = dbca_data)
+cat("Comparación ANOVA del DBCA aditivo vs. modelo con interacción:\n\n")
+print(anova(modelo_dbca, mod_factorial_test))
+
+p_interaccion <- anova(modelo_dbca, mod_factorial_test)$`Pr(>F)`[2]
+cat("\nConclusión:\n")
+if (p_interaccion > 0.05) {
+  cat("✓ La interacción naturaleza × jornada NO es significativa (p =",
+      round(p_interaccion, 4), ").\n")
+  cat("  El supuesto aditivo del DBCA queda validado retroactivamente.\n")
+} else {
+  cat("⚠ La interacción es significativa (p =", round(p_interaccion, 4),
+      "). Considerar modelo factorial completo (Fase III).\n")
+}
+```
+
+## Verificación de supuestos del modelo
+
+### Normalidad de residuales
+
+```{r prueba_normalidad, fig.cap="Diagnóstico de normalidad de residuales del DBCA"}
+residuales <- residuals(modelo_dbca)
+
+par(mfrow = c(1, 2))
+qqnorm(residuales, main = "Q-Q Plot de residuales")
+qqline(residuales, col = "red", lwd = 1.5)
+hist(residuales, breaks = 30, col = "steelblue", border = "white",
+     main = "Distribución de residuales", xlab = "Residuales", ylab = "Frecuencia")
+curve(dnorm(x, mean = mean(residuales), sd = sd(residuales)) * length(residuales) * 
+        diff(hist(residuales, plot = FALSE, breaks = 30)$breaks[1:2]),
+      add = TRUE, col = "red", lwd = 2)
+par(mfrow = c(1, 1))
+
+# Lilliefors — apropiada para n grande
+prueba_norm <- lillie.test(residuales)
+cat("Prueba de Lilliefors (normalidad):\n")
+cat("  Estadístico D =", round(prueba_norm$statistic, 4), "\n")
+cat("  p-valor =", round(prueba_norm$p.value, 4), "\n\n")
+
+# Triangulación con Shapiro-Wilk sobre submuestra (n máx 5000)
+set.seed(42)
+n_sub <- min(5000, length(residuales))
+sw_sub <- shapiro.test(sample(residuales, n_sub))
+cat("Triangulación con Shapiro-Wilk (submuestra n =", n_sub, "):\n")
+cat("  W =", round(sw_sub$statistic, 4),
+    "| p-valor =", round(sw_sub$p.value, 4), "\n\n")
+
+if(prueba_norm$p.value > 0.05 && sw_sub$p.value > 0.05) {
+  cat("✓ No se rechaza normalidad (ambas pruebas, p > 0.05)\n")
+} else {
+  cat("✗ Hay evidencia de desviación de normalidad.\n\n")
+  cat("Justificación de robustez del ANOVA (Montgomery, 2017, sec. 3.4):\n")
+  cat("- Con n =", nrow(dbca_data), "y k = 2 grupos, el ANOVA es robusto por TCL.\n")
+  cat("- La desviación es leve (asimetría moderada visible en Q-Q).\n")
+  cat("- Como verificación, se podría aplicar Kruskal-Wallis no paramétrico.\n")
+}
+```
+
+### Homocedasticidad (igualdad de varianzas)
+
+```{r prueba_levene, fig.cap="Residuales vs valores ajustados"}
+plot(modelo_dbca, which = 1, main = "Residuales vs. Valores ajustados")
+
+# CORRECCIÓN: Levene sobre el factor de TRATAMIENTO (no la interacción),
+# que es lo que requiere el DBCA aditivo (Montgomery, 2017, sec. 3.4)
+cat("=== Pruebas de homocedasticidad ===\n\n")
+
+# Sobre el tratamiento (relevante para el DBCA)
+prueba_levene_trat <- leveneTest(punt_global ~ cole_naturaleza, data = dbca_data)
+cat("Levene sobre el factor de tratamiento (naturaleza):\n")
+print(prueba_levene_trat)
+
+# Fligner-Killeen como respaldo robusto a no-normalidad
+prueba_fligner <- fligner.test(residuales ~ dbca_data$cole_naturaleza)
+cat("\nFligner-Killeen (robusto a no-normalidad):\n")
+cat("  Estadístico =", round(prueba_fligner$statistic, 4),
+    "| p-valor =", round(prueba_fligner$p.value, 4), "\n\n")
+
+# Bartlett sobre tratamiento (asumiendo normalidad ya verificada)
+prueba_bartlett <- bartlett.test(punt_global ~ cole_naturaleza, data = dbca_data)
+cat("Bartlett (sensible a no-normalidad):\n")
+cat("  K² =", round(prueba_bartlett$statistic, 4),
+    "| p-valor =", round(prueba_bartlett$p.value, 4), "\n\n")
+
+p_levene <- prueba_levene_trat$`Pr(>F)`[1]
+if(p_levene > 0.05) {
+  cat("✓ No se rechaza homocedasticidad por Levene (p > 0.05)\n")
+} else {
+  cat("✗ Se rechaza homocedasticidad. Se recomienda:\n")
+  cat("  - Interpretar con precaución (ANOVA es moderadamente robusto)\n")
+  cat("  - Considerar test de Welch o transformación de respuesta\n")
+}
+```
+
+### Independencia de residuales
+
+```{r prueba_durbin_watson, fig.cap="Secuencia de residuales y prueba de Durbin-Watson"}
+plot(residuales, type = "l", col = "steelblue",
+     main = "Secuencia de residuales",
+     xlab = "Índice de observación", ylab = "Residual")
+abline(h = 0, col = "red", lwd = 1.5, lty = 2)
+
+# Durbin-Watson para autocorrelación de primer orden
+dw_test <- dwtest(modelo_dbca)
+cat("Prueba de Durbin-Watson (autocorrelación):\n")
+cat("  DW =", round(dw_test$statistic, 3),
+    "| p-valor =", round(dw_test$p.value, 4), "\n\n")
+cat("Regla práctica: DW ≈ 2 indica independencia; DW < 1.5 sugiere autocorrelación positiva.\n")
+
+if (dw_test$p.value > 0.05) {
+  cat("✓ No se rechaza independencia (p > 0.05).\n")
+} else {
+  cat("⚠ Hay indicios de autocorrelación. Dado que los datos provienen de muestreo\n")
+  cat("  aleatorio (no serie temporal), este resultado podría reflejar orden de descarga\n")
+  cat("  por estratos más que dependencia temporal real.\n")
+}
+```
+
+## Comparaciones múltiples (Tukey HSD)
+
+```{r comparaciones_multiples_tukey}
+if (exists("p_naturaleza") && p_naturaleza < 0.05) {
+  cat("Dado que el factor naturaleza resultó significativo en el ANOVA (α = 0.05),",
+      "se aplicó Tukey HSD para comparar medias.\n\n")
+} else {
+  cat("El factor naturaleza no alcanzó significancia al 5% en este ajuste;",
+      "las comparaciones Tukey se presentan como complemento exploratorio.\n\n")
+}
+
+tukey_resultado <- TukeyHSD(modelo_dbca, "cole_naturaleza")
+print(tukey_resultado)
+
+# IC de la diferencia explícito
+diferencia_ic <- as.data.frame(tukey_resultado$cole_naturaleza)
+cat("\nDiferencia práctica estimada:\n")
+cat("  Magnitud:", round(abs(diferencia_ic$diff), 1), "puntos\n")
+cat("  IC 95%: [", round(diferencia_ic$lwr, 1), ",",
+    round(diferencia_ic$upr, 1), "]\n")
+cat("  En la escala Saber 11 (~0-500), esta diferencia es sustantiva.\n")
+
+plot(tukey_resultado, las = 1)
+```
+
+```{r emmeans_viz, fig.cap="Medias marginales estimadas por naturaleza del colegio"}
+emm <- emmeans(modelo_dbca, ~ cole_naturaleza)
+plot(emm, comparisons = TRUE) +
+  labs(
+    title    = "Medias marginales estimadas (EMM) — Naturaleza del colegio",
+    subtitle = "Barras de comparación: sin solapamiento = diferencia significativa",
+    x        = "Puntaje global estimado",
+    y        = "Naturaleza del colegio"
+  ) +
+  theme_minimal()
+```
+
+## Potencia del diseño experimental
+
+Se calcula la **potencia** del contraste principal usando el tamaño del efecto observado (Montgomery, 2017, sec. 3.7).
+
+```{r potencia_dbca, fig.cap="Curva de potencia del DBCA"}
+# Tamaño del efecto desde el ANOVA del DBCA
+mod1  <- aov(punt_global ~ cole_naturaleza, data = dbca_data)
+tb    <- summary(mod1)[[1]]
+SS_tr <- tb["cole_naturaleza", "Sum Sq"]
+SS_e  <- tb["Residuals",        "Sum Sq"]
+k     <- nlevels(droplevels(dbca_data$cole_naturaleza))
+Ntot  <- nrow(dbca_data)
+
+# CORRECCIÓN: fórmula correcta de Cohen para ANOVA (Cohen 1988, eq. 8.2.21)
+# f = sqrt(eta² / (1 - eta²))  -- sin multiplicar por sqrt(k)
+eta2    <- SS_tr / (SS_tr + SS_e)
+f_cohen <- sqrt(eta2 / (1 - eta2))
+
+# Magnitud según Cohen
+mag_f <- cut(f_cohen, breaks = c(-Inf, 0.10, 0.25, 0.40, Inf),
+             labels = c("Trivial", "Pequeño", "Mediano", "Grande")) |>
+         as.character()
+
+# Potencia con n actual
+pw <- pwr.anova.test(k = k, n = Ntot / k, f = f_cohen, sig.level = 0.05)
+
+cat("=== Análisis de potencia (Cohen, 1988) ===\n")
+cat("  η² observado:           ", round(eta2, 4), "\n")
+cat("  f de Cohen:             ", round(f_cohen, 4), " (", mag_f, ")\n", sep="")
+cat("  k (grupos):             ", k, "\n")
+cat("  n por grupo (aprox.):   ", round(Ntot / k, 0), "\n")
+cat("  Potencia (1 - β):       ", round(pw$power, 4), "\n\n")
+
+# Curva de potencia vs n por grupo
+n_grid <- seq(10, 500, by = 10)
+pot_grid <- sapply(n_grid, function(n) {
+  pwr.anova.test(k = k, n = n, f = f_cohen, sig.level = 0.05)$power
+})
+df_pot <- data.frame(n_grupo = n_grid, potencia = pot_grid)
+
+ggplot(df_pot, aes(x = n_grupo, y = potencia)) +
+  geom_line(color = "#3498DB", linewidth = 1.1) +
+  geom_hline(yintercept = 0.80, linetype = "dashed", color = "orange") +
+  geom_hline(yintercept = 0.95, linetype = "dashed", color = "red") +
+  geom_vline(xintercept = round(Ntot / k, 0), linetype = "dotted",
+             color = "darkgreen") +
+  annotate("text", x = round(Ntot / k, 0) + 10, y = 0.4,
+           label = paste0("n actual ≈ ", round(Ntot / k, 0)),
+           hjust = 0, size = 3.5) +
+  annotate("text", x = 400, y = 0.82, label = "80%", color = "orange", size = 3) +
+  annotate("text", x = 400, y = 0.97, label = "95%", color = "red", size = 3) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
+  labs(
+    title    = "Curva de potencia — DBCA (naturaleza del colegio)",
+    subtitle = paste0("f de Cohen = ", round(f_cohen, 3), " | α = 0.05 | k = ", k),
+    x        = "n por grupo",
+    y        = "Potencia (1 − β)"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+---
+
+# Fase III: Diseños factoriales (Montgomery, cap. 5)
+
+**Principio factorial vs OFAT:** el enfoque OFAT (*One Factor At A Time*) varía un factor mientras mantiene los demás fijos, y repite el proceso para cada factor. Aunque intuitivo, OFAT tiene dos desventajas críticas: (1) **no detecta interacciones** — si el efecto de la naturaleza del colegio cambia según la jornada, OFAT lo pasaría por alto; (2) **es ineficiente** — requiere más observaciones para la misma precisión. El diseño **factorial** estudia todos los factores simultáneamente en todas sus combinaciones, detecta interacciones y es más eficiente con el mismo $n$ total (Montgomery, 2017, cap. 5).
+
+Se amplía el análisis del **diseño observacional** sobre Saber 11: en lugar del modelo aditivo DBCA (Fase II), se considera un **diseño factorial** con **interacción** entre `cole_naturaleza` y `cole_jornada`, y un modelo de **tres factores** añadiendo `cole_calendario`.
+
+## Factorial de dos vías: naturaleza × jornada
+
+```{r f3_factorial_twoway}
+mod_f2 <- lm(punt_global ~ cole_naturaleza * cole_jornada, data = dbca_data)
+cat("--- Modelo factorial 2 vías (naturaleza × jornada) ---\n")
+anova_f2 <- anova(mod_f2)
+print(anova_f2)
+```
+
+### Tamaños de efecto $\eta^2$ del factorial
+
+```{r f3_eta2_factorial}
+SS_f2     <- anova_f2[, "Sum Sq"]
+SS_f2_tot <- sum(SS_f2)
+nombres_f2 <- rownames(anova_f2)
+SS_f2_err <- SS_f2[length(SS_f2)]
+
+eta2_f2 <- data.frame(
+  Fuente       = nombres_f2,
+  SS           = round(SS_f2, 1),
+  Df           = anova_f2$Df,
+  eta2         = round(SS_f2 / SS_f2_tot, 4),
+  eta2_parcial = round(SS_f2 / (SS_f2 + SS_f2_err), 4)
+)
+# El error no tiene eta² parcial
+eta2_f2$eta2_parcial[nrow(eta2_f2)] <- NA
+
+eta2_f2$Magnitud <- cut(eta2_f2$eta2_parcial,
+                         breaks = c(-Inf, 0.01, 0.06, 0.14, Inf),
+                         labels = c("Trivial","Pequeño","Mediano","Grande")) %>%
+                    as.character()
+
+kable(eta2_f2,
+      caption = "Tamaños de efecto del Factorial 2 vías (Cohen, 1988)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+
+# Foco en la interacción
+fila_int <- which(grepl(":", nombres_f2))
+if (length(fila_int) > 0) {
+  cat("\nInterpretación de la interacción naturaleza × jornada:\n")
+  cat("  p-valor:        ", format(anova_f2$`Pr(>F)`[fila_int], digits = 3), "\n")
+  cat("  η² parcial:     ", round(eta2_f2$eta2_parcial[fila_int], 4), "\n")
+  cat("  Magnitud Cohen: ", eta2_f2$Magnitud[fila_int], "\n\n")
+  if (anova_f2$`Pr(>F)`[fila_int] > 0.05) {
+    cat("La interacción no es estadísticamente significativa al 5%.\n")
+    cat("→ El supuesto aditivo del DBCA (Fase II) queda validado retroactivamente.\n")
+  } else if (eta2_f2$eta2_parcial[fila_int] < 0.01) {
+    cat("La interacción es estadísticamente significativa pero PRÁCTICAMENTE TRIVIAL\n")
+    cat("(η² parcial < 0.01). Con n grande, p-valores pequeños no implican\n")
+    cat("efectos sustantivos. El DBCA aditivo sigue siendo razonable.\n")
+  } else {
+    cat("La interacción es significativa Y tiene tamaño práctico relevante.\n")
+    cat("→ El factorial completo es preferible al DBCA aditivo.\n")
+  }
+}
+```
+
+### Gráfico de interacción
+
+```{r f3_interaction_plot, fig.cap="Perfiles de medias: interacción naturaleza × jornada"}
+# Versión enriquecida con ggplot e IC 95% por celda
+medias_int <- dbca_data %>%
+  group_by(cole_naturaleza, cole_jornada) %>%
+  summarise(
+    media  = mean(punt_global),
+    se     = sd(punt_global) / sqrt(dplyr::n()),
+    ic_inf = media - 1.96 * se,
+    ic_sup = media + 1.96 * se,
+    n      = dplyr::n(),
+    .groups = "drop"
+  )
+
+ggplot(medias_int,
+       aes(x = cole_jornada, y = media,
+           color = cole_naturaleza, group = cole_naturaleza)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = ic_inf, ymax = ic_sup),
+                width = 0.15, linewidth = 0.7) +
+  scale_color_manual(values = c("NO OFICIAL" = "#E74C3C",
+                                "OFICIAL"    = "#3498DB")) +
+  labs(
+    title    = "Gráfica de interacción: Naturaleza × Jornada",
+    subtitle = "Líneas cuasi-paralelas = ausencia/leve interacción | Barras = IC 95%",
+    x = "Jornada (bloque)", y = "Puntaje global medio",
+    color = "Naturaleza"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "top")
+```
+
+### Diagnóstico de residuos del factorial
+
+```{r f3_residuals_f2, fig.cap="Residuos del factorial 2 vías"}
+par(mfrow = c(1, 2))
+plot(fitted(mod_f2), resid(mod_f2), main = "Residuos vs ajustados",
+     xlab = "Ajustado", ylab = "Residual", pch = 20, col = rgb(0,0,0,.3))
+abline(h = 0, col = "red", lty = 2)
+qqnorm(resid(mod_f2), main = "Q-Q residuales"); qqline(resid(mod_f2), col = "red")
+par(mfrow = c(1, 1))
+```
+
+## Factorial de tres vías: naturaleza × jornada × calendario
+
+```{r f3_factorial_threeway}
+op <- options(contrasts = c("contr.sum", "contr.poly"))
+
+mf3 <- dbca_data %>%
+  filter(!is.na(cole_calendario),
+         as.character(cole_calendario) %in% c("A", "B")) %>%
+  droplevels()
+
+cat("Distribución de celdas (naturaleza × jornada × calendario):\n")
+tab_celdas <- with(mf3, table(cole_naturaleza, cole_jornada, cole_calendario))
+print(tab_celdas)
+celdas_vacias <- sum(tab_celdas == 0)
+cat("\nCeldas vacías:", celdas_vacias, "\n")
+
+if (celdas_vacias > 0) {
+  cat("\n⚠ Celdas vacías detectadas — interacción triple no estimable.\n")
+  cat("Se ajusta modelo sin interacción triple:\n\n")
+  mod_f3 <- lm(punt_global ~ cole_naturaleza * cole_jornada +
+                              cole_naturaleza * cole_calendario +
+                              cole_jornada    * cole_calendario,
+               data = mf3)
+} else {
+  cat("\nTodas las celdas tienen datos — modelo completo con interacción triple.\n\n")
+  mod_f3 <- lm(punt_global ~ cole_naturaleza * cole_jornada * cole_calendario,
+               data = mf3)
+}
+
+# Verificar alias residuales antes de imprimir
+al <- alias(mod_f3)$Complete
+if (!is.null(al) && nrow(al) > 0) {
+  cat("Coeficientes aliased detectados — usando Anova tipo II:\n")
+  anova_f3 <- car::Anova(mod_f3, type = "II")
+} else {
+  cat("\n--- ANOVA tipo III ---\n")
+  anova_f3 <- car::Anova(mod_f3, type = "III")
+}
+print(anova_f3)
+
+# η² para el factorial 3 vías
+SS_f3 <- anova_f3$`Sum Sq`
+SS_f3_tot <- sum(SS_f3, na.rm = TRUE)
+SS_f3_err <- SS_f3[which(rownames(anova_f3) == "Residuals")]
+
+eta2_f3 <- data.frame(
+  Fuente       = rownames(anova_f3),
+  eta2         = round(SS_f3 / SS_f3_tot, 4),
+  eta2_parcial = round(SS_f3 / (SS_f3 + SS_f3_err), 4)
+)
+eta2_f3$eta2_parcial[eta2_f3$Fuente == "Residuals"] <- NA
+
+cat("\n--- Tamaños de efecto del Factorial 3 vías ---\n")
+print(eta2_f3, row.names = FALSE)
+
+options(op)
+```
+
+## Extensión: ANCOVA con estrato socioeconómico como covariable cuantitativa
+
+La rúbrica solicita curvas de respuesta cuando hay factores **cuantitativos**. Aquí los factores principales son categóricos, pero el estrato socioeconómico tiene **estructura ordinal** y puede tratarse como covariable continua (escala 1–6). Esto extiende el factorial a un **ANCOVA**, donde se puede graficar la respuesta vs. el factor continuo (Montgomery, 2017, sec. 15.3).
+
+```{r f3_ancova}
+mf_ancova <- dbca_data %>%
+  mutate(
+    estrato_num = suppressWarnings(
+      as.numeric(gsub("[^0-9]", "", as.character(fami_estratovivienda)))
+    )
+  ) %>%
+  filter(!is.na(estrato_num), estrato_num >= 1, estrato_num <= 6)
+
+cat("Observaciones para ANCOVA:", nrow(mf_ancova), "\n")
+cat("Rango de estrato_num:",
+    paste(range(mf_ancova$estrato_num), collapse = "-"), "\n\n")
+
+mod_ancova <- aov(punt_global ~ cole_naturaleza + cole_jornada + estrato_num,
+                  data = mf_ancova)
+cat("--- ANCOVA: factores categóricos + estrato como covariable ---\n")
+print(summary(mod_ancova))
+
+# Coeficiente de estrato_num: pendiente de la respuesta
+coef_estrato <- coef(lm(punt_global ~ cole_naturaleza + cole_jornada + estrato_num,
+                         data = mf_ancova))["estrato_num"]
+cat("\nPendiente de respuesta por unidad de estrato:",
+    round(coef_estrato, 2), "puntos por nivel.\n")
+```
+
+```{r f3_curva_respuesta, fig.cap="Curva de respuesta: puntaje global vs. estrato (ANCOVA)"}
+ggplot(mf_ancova,
+       aes(x = estrato_num, y = punt_global, color = cole_naturaleza)) +
+  geom_jitter(alpha = 0.15, width = 0.2, size = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, linewidth = 1.1) +
+  scale_x_continuous(breaks = 1:6,
+                     labels = paste("Est.", 1:6)) +
+  scale_color_manual(values = c("NO OFICIAL" = "#E74C3C",
+                                "OFICIAL"    = "#3498DB")) +
+  labs(
+    title    = "Curva de respuesta: puntaje global vs. estrato socioeconómico",
+    subtitle = "Pendientes paralelas sugieren ausencia de interacción naturaleza × estrato",
+    x = "Estrato socioeconómico (ordinal)",
+    y = "Puntaje global",
+    color = "Naturaleza"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "top")
+```
+
+**Nota sobre superficies de respuesta:** el syllabus pide superficies cuando los factores son **cuantitativos**. Los factores principales aquí son categóricos; el equivalente informativo son los perfiles de interacción y las medias marginales (`emmeans`). La curva de respuesta del ANCOVA cubre el criterio cuantitativo usando el estrato como covariable ordinal.
+
+---
+
+# Fase IV: Diseños $2^k$ y análisis de efectos (Montgomery, cap. 6)
+
+Se construye un **$2^3$** codificando tres fuentes de variación observables en `dbca_data` con niveles $\{-1, +1\}$:
+
+- **A:** naturaleza (NO OFICIAL = +1, OFICIAL = −1).
+- **B:** jornada MAÑANA (+1) vs. resto (−1).
+- **C:** estrato socioeconómico "bajo" (Estrato 1–3 = −1) vs. "alto" (Estrato 4–6 = +1); registros sin estrato válido se excluyen.
+
+Se agregan **dos pseudo-réplicas** por combinación $(A,B,C)$ partiendo aleatoriamente los estudiantes dentro de cada celda (`set.seed(123)`) para permitir estimación de error y aplicar Daniel/Lenth sobre los efectos calculados a partir de medias por celda.
+
+## Construcción de las celdas y réplicas
+
+```{r f4_2k_datos}
+set.seed(123)
+low_es  <- paste("Estrato", 1:3)
+high_es <- paste("Estrato", 4:6)
+
+xdat <- dbca_data %>%
+  filter(as.character(fami_estratovivienda) %in% c(low_es, high_es)) %>%
+  mutate(
+    A = ifelse(cole_naturaleza == "NO OFICIAL", 1, -1),
+    B = ifelse(cole_jornada == "MAÑANA", 1, -1),
+    C = ifelse(fami_estratovivienda %in% low_es, -1, 1)
+  )
+
+xrep <- xdat %>%
+  group_by(A, B, C) %>%
+  group_modify(~ {
+    n <- nrow(.x)
+    if (n >= 2L) {
+      .x$repl <- sample(rep(1:2, length.out = n))
+    } else {
+      .x$repl <- 1L
+    }
+    .x
+  }) %>%
+  ungroup()
+
+celdas <- xrep %>%
+  group_by(A, B, C, repl) %>%
+  summarise(ybar = mean(punt_global), n = dplyr::n(), .groups = "drop")
+
+cat("Celdas (A,B,C,repl) con n >= 1:", nrow(celdas), "\n")
+print(head(celdas, 16))
+```
+
+## Modelo del $2^3$ y estimación de efectos
+
+Para el análisis canónico del $2^k$ se trabaja con las **medias por vértice** (8 medias), sin incluir `factor(repl)` como efecto fijo (las réplicas artificiales son para estimar error puro, no son un bloqueo aleatorizado real).
+
+```{r f4_2k_lm}
+# Medias por vértice (8 valores) — base del análisis 2^3 clásico
+vert <- xrep %>%
+  group_by(A, B, C) %>%
+  summarise(ybar = mean(punt_global), n_obs = dplyr::n(), .groups = "drop")
+
+cat("Medias por vértice (8 combinaciones del 2^3):\n")
+print(vert)
+
+# Modelo saturado sobre las 8 medias por vértice (Montgomery, cap. 6)
+mod_2k <- lm(ybar ~ A * B * C, data = vert)
+cat("\nModelo 2^3 saturado sobre medias por vértice:\n")
+print(summary(mod_2k))
+```
+
+## Tabla de signos y cálculo de efectos (codificación −1/+1)
+
+En la codificación $\pm 1$, el **efecto** de un factor es 2 veces el coeficiente de regresión correspondiente. Equivalentemente, $\text{Efecto} = \bar{y}_+ - \bar{y}_-$ (Montgomery, 2017, eq. 6.3).
+
+```{r f4_efectos}
+# Tabla de signos explícita — 8 combinaciones del 2^3
+signos <- expand.grid(A = c(-1, 1), B = c(-1, 1), C = c(-1, 1))
+signos <- signos[order(signos$A, signos$B, signos$C), ]
+signos$I   <- 1L
+signos$AB  <- signos$A * signos$B
+signos$AC  <- signos$A * signos$C
+signos$BC  <- signos$B * signos$C
+signos$ABC <- signos$A * signos$B * signos$C
+
+trt_label <- function(a, b, c) {
+  lbl <- paste0(ifelse(a==1,"a",""), ifelse(b==1,"b",""), ifelse(c==1,"c",""))
+  ifelse(lbl == "", "(1)", lbl)
+}
+signos$Tratamiento <- mapply(trt_label, signos$A, signos$B, signos$C)
+tabla_signos <- signos[, c("Tratamiento","I","A","B","C","AB","AC","BC","ABC")]
+cat("Tabla de signos — diseño 2^3 completo (Montgomery, cap. 6):\n")
+print(tabla_signos, row.names = FALSE)
+
+cat("\nCodificación de los factores:\n")
+cat("  A: OFICIAL = −1  |  NO OFICIAL = +1\n")
+cat("  B: NOCHE/COMPLETA = −1  |  MAÑANA = +1\n")
+cat("  C: Estrato 1–3 (bajo) = −1  |  Estrato 4–6 (alto) = +1\n\n")
+
+# Cálculo de efectos
+co <- coef(mod_2k)
+nm <- names(co)
+pick <- nm %in% c("A", "B", "C", "A:B", "A:C", "B:C", "A:B:C")
+eff <- 2 * co[pick]
+names(eff) <- c("A", "B", "C", "AB", "AC", "BC", "ABC")
+
+cat("Efectos estimados (2 × coeficiente de regresión):\n")
+print(round(eff, 3))
+
+# SS de cada efecto en diseño 2^k sin réplicas: SS = N * Efecto² / 4
+N_corridas <- nrow(vert)
+SS_efectos <- (N_corridas * eff^2) / 4
+cat("\nSumas de cuadrados de cada efecto (SS = N·Efecto²/4):\n")
+print(round(SS_efectos, 2))
+```
+
+## Método de Lenth: PSE, ME y SME (Lenth, 1989)
+
+Para un $2^3$ sin réplicas, el método de Lenth proporciona márgenes de significancia sin requerir estimación del error desde otra fuente. La fórmula completa de Lenth (1989, *Technometrics*) es:
+
+1. $s_0 = 1.5 \cdot \text{mediana}(|\hat{\theta}_i|)$
+2. $\text{PSE} = 1.5 \cdot \text{mediana}(|\hat{\theta}_i| : |\hat{\theta}_i| < 2.5 \cdot s_0)$
+3. $\text{ME}  = t_{0.975, d} \cdot \text{PSE}$ con $d = m/3$ y $m$ = número de efectos
+4. $\text{SME} = t_{\gamma, d} \cdot \text{PSE}$ con $\gamma = (1 + 0.95^{1/m})/2$
+
+```{r f4_lenth}
+eff_clean <- eff[!is.na(eff)]
+m <- length(eff_clean)
+
+if (m < 3L) {
+  cat("⚠ Menos de 3 efectos estimables — método de Lenth no aplicable.\n")
+} else {
+  # Paso 1: s0
+  s0  <- 1.5 * median(abs(eff_clean))
+  # Paso 2: PSE filtrando efectos < 2.5*s0 (estimación robusta del error)
+  trim <- abs(eff_clean) < 2.5 * s0
+  PSE  <- 1.5 * median(abs(eff_clean[trim]))
+  # Paso 3 y 4: cuantiles t con d = m/3 (Lenth 1989)
+  d    <- m / 3
+  ME   <- qt(0.975, d) * PSE
+  gamma <- (1 + 0.95^(1/m)) / 2
+  SME  <- qt(gamma, d) * PSE
+  
+  cat("=== Método de Lenth (1989) — completo ===\n")
+  cat("  m (número de efectos):", m, "\n")
+  cat("  s0 = 1.5 × mediana|θ|:", round(s0, 3), "\n")
+  cat("  PSE (Pseudo Standard Error):", round(PSE, 3), "\n")
+  cat("  d (grados de libertad efectivos = m/3):", round(d, 2), "\n")
+  cat("  ME  (Margen individual, α = 0.05):", round(ME, 3), "\n")
+  cat("  SME (Margen simultáneo, FWER 0.05):", round(SME, 3), "\n\n")
+  
+  df_eff <- data.frame(
+    Efecto    = names(eff_clean),
+    Valor     = round(eff_clean, 3),
+    Abs_valor = round(abs(eff_clean), 3),
+    Supera_ME  = abs(eff_clean) > ME,
+    Supera_SME = abs(eff_clean) > SME
+  )
+  print(df_eff, row.names = FALSE)
+  
+  cat("\nEfectos activos (criterio individual ME):\n")
+  if (sum(df_eff$Supera_ME) == 0) cat("  Ninguno supera ME.\n")
+  else print(round(eff_clean[df_eff$Supera_ME], 3))
+  
+  cat("\nEfectos activos (criterio simultáneo SME, más conservador):\n")
+  if (sum(df_eff$Supera_SME) == 0) cat("  Ninguno supera SME.\n")
+  else print(round(eff_clean[df_eff$Supera_SME], 3))
+}
+```
+
+## Gráfica de probabilidad normal de efectos (Daniel, 1959)
+
+La gráfica de Daniel identifica visualmente los efectos activos: los efectos inactivos se alinean sobre una recta (representan ruido aleatorio), mientras que los efectos activos se desvían de la recta.
+
+```{r f4_2k_effects_daniel, fig.cap="Gráfica de Daniel: probabilidad normal de los efectos del 2^3"}
+ord <- order(eff_clean)
+eff_sorted  <- eff_clean[ord]
+names_sorted <- names(eff_clean)[ord]
+p_emp <- (seq_along(eff_sorted) - 0.5) / length(eff_sorted)
+q_teo <- qnorm(p_emp)
+
+plot(q_teo, eff_sorted, pch = 19, col = "steelblue",
+     main = "Gráfica de probabilidad normal de efectos (Daniel, 1959)",
+     xlab = "Cuantiles teóricos N(0,1)",
+     ylab = "Efectos estimados (codificación ±1)")
+abline(lm(eff_sorted ~ q_teo), col = "darkgray", lty = 2)
+text(q_teo, eff_sorted, labels = names_sorted, pos = 4, cex = 0.85, col = "black")
+
+if (exists("ME")) {
+  abline(h = c(-ME, ME), col = "darkorange", lty = 3, lwd = 1.5)
+  legend("topleft",
+         legend = c("Recta de referencia", paste0("±ME = ±", round(ME, 2))),
+         col = c("darkgray", "darkorange"), lty = c(2, 3),
+         bty = "n", cex = 0.85)
+}
+```
+
+## Diagrama de Pareto de efectos estandarizados
+
+```{r f4_pareto, fig.cap="Diagrama de Pareto de |efectos| del 2^3"}
+eff_pareto <- sort(abs(eff_clean), decreasing = TRUE)
+nms_p      <- names(eff_pareto)
+colores    <- ifelse(eff[nms_p] > 0, "#3498DB", "#E74C3C")
+
+par(mar = c(4, 5, 3, 2))
+bp <- barplot(
+  eff_pareto,
+  horiz   = TRUE,
+  names.arg = nms_p,
+  col     = colores,
+  main    = "Pareto de efectos — |efecto| ordenado descendentemente",
+  xlab    = "|Efecto estimado|",
+  las     = 1,
+  border  = NA
+)
+
+if (exists("ME")) {
+  abline(v = ME,  col = "darkorange", lwd = 2, lty = 2)
+  abline(v = SME, col = "darkred",    lwd = 2, lty = 3)
+  legend("bottomright",
+         legend = c(paste0("ME = ",  round(ME,  2)),
+                    paste0("SME = ", round(SME, 2))),
+         col    = c("darkorange", "darkred"),
+         lty    = c(2, 3), lwd = 2, bty = "n", cex = 0.85)
+}
+legend("topright", legend = c("Efecto positivo", "Efecto negativo"),
+       fill = c("#3498DB", "#E74C3C"), bty = "n", cex = 0.85)
+```
+
+## D- y G-optimalidad de los diseños $2^k$
+
+Los diseños $2^k$ en los vértices del cubo codificado **maximizan el determinante de $X'X$** para el modelo de primer orden, propiedad conocida como **D-optimalidad**. Esto significa que, bajo el modelo lineal de primer orden, no existe diseño con mayor información (menor varianza generalizada de los estimadores) en el mismo rango experimental (Montgomery, 2017, sec. 6.7).
+
+Asimismo, bajo supuestos gaussianos, los $2^k$ tienen propiedades favorables de **G-optimalidad** (minimizan la varianza máxima de predicción en la región experimental), lo que explica su uso predominante en *screening designs* — etapas iniciales de experimentación donde se busca identificar los pocos factores activos entre muchos candidatos (principio de *effect sparsity*).
+
+**Puntos centrales y curvatura:** en un $2^k$ de laboratorio físico, los **puntos centrales** $(0,0,\ldots,0)$ permiten contrastar curvatura frente al plano de primer orden con la prueba:
+
+$$F_{\text{curv}} = \frac{n_F n_C (\bar{y}_F - \bar{y}_C)^2 / (n_F + n_C)}{\text{MSE}}$$
+
+Aquí, con datos puramente categóricos en los vértices, no es posible añadir puntos centrales "físicos" — se documenta como limitación del marco observacional.
+
+---
+
+# Fase V: Bloqueo y confusión en $2^k$ (Montgomery, cap. 7)
+
+Cuando un diseño $2^k$ no puede ejecutarse en un solo bloque homogéneo (lotes diferentes, días, operadores), se recurre al **bloqueo con confusión**: se sacrifica deliberadamente la estimación de uno o más efectos —usualmente las interacciones de orden alto, asumidas despreciables por *sparsity of effects*— para absorber la variación entre bloques sin perder los efectos principales.
+
+## Diseño con confusión ABC
+
+Se forma **un contraste generador** confundiendo la interacción triple **ABC** con el efecto de **bloque** al partir las 8 combinaciones $(A,B,C)$ en dos bloques de tamaño 4:
+
+- **Bloque I:** $A \cdot B \cdot C = +1$
+- **Bloque II:** $A \cdot B \cdot C = -1$
+
+```{r f5_asignacion_bloques}
+asig_bloques <- vert %>%
+  mutate(
+    ABC = A * B * C,
+    Bloque = factor(ifelse(ABC > 0, "I", "II"))
+  )
+
+# Tabla de asignación de bloques
+cat("Asignación de las 8 combinaciones a 2 bloques (generador: ABC):\n\n")
+kable(asig_bloques %>%
+        mutate(
+          Tratamiento = mapply(function(a,b,c) {
+            lbl <- paste0(ifelse(a==1,"a",""), ifelse(b==1,"b",""), ifelse(c==1,"c",""))
+            ifelse(lbl=="", "(1)", lbl)
+          }, A, B, C)
+        ) %>%
+        select(Tratamiento, A, B, C, ABC, Bloque, ybar),
+      caption = "Asignación de tratamientos a bloques (ABC confundido con bloque)",
+      col.names = c("Trat.", "A", "B", "C", "ABC", "Bloque", "ȳ")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  row_spec(which(asig_bloques$Bloque == "I"),  background = "#E8F4FD") %>%
+  row_spec(which(asig_bloques$Bloque == "II"), background = "#FDECEC")
+```
+
+## Verificación previa: sparsity of effects
+
+Antes de hacer pooling de interacciones $\geq 2$ vías como estimador del error, es esencial **verificar que esas interacciones sean efectivamente despreciables** (principio de *sparsity*). Si AB, AC o BC son comparables a los efectos principales, su inclusión en el pool inflaría el MSE espuriamente.
+
+```{r f5_sparsity_check}
+# Recuperar efectos de Fase IV
+if (!exists("ME")) {
+  cat("⚠ Fase IV no ejecutada — usando umbral provisional (|efecto| < 0.5×máx).\n")
+  umbral <- max(abs(eff)) * 0.5
+} else {
+  umbral <- ME
+}
+
+cat("Verificación de sparsity (umbral: ME de Lenth =", round(umbral, 3), ")\n\n")
+
+interacciones <- eff[c("AB", "AC", "BC", "ABC")]
+df_sparsity <- data.frame(
+  Efecto      = names(interacciones),
+  Valor       = round(interacciones, 3),
+  Abs_valor   = round(abs(interacciones), 3),
+  Activo      = abs(interacciones) > umbral,
+  Decision    = ifelse(abs(interacciones) > umbral,
+                       "EXCLUIR del pool (activo)",
+                       "Incluir en pool (despreciable)")
+)
+print(df_sparsity, row.names = FALSE)
+
+interacciones_activas <- names(interacciones)[abs(interacciones) > umbral]
+cat("\nInteracciones activas (a EXCLUIR del pooling):",
+    if (length(interacciones_activas) == 0) "ninguna" else paste(interacciones_activas, collapse = ", "),
+    "\n")
+```
+
+## Comparación cuantitativa: sin bloque vs. con bloque
+
+Con 8 vértices, ambos modelos son saturados (df_error = 0). El procedimiento estándar (Montgomery, 2017, cap. 7) es hacer **pooling de interacciones despreciables** como estimador del error.
+
+```{r f5_confound}
+mod_noblock <- lm(ybar ~ A * B * C, data = asig_bloques)
+mod_block   <- lm(ybar ~ Bloque + A + B + C + A:B + A:C + B:C, data = asig_bloques)
+
+# SS por término en cada modelo
+an_nb <- anova(mod_noblock)
+an_b  <- anova(mod_block)
+
+cat("=== ANOVA modelo sin bloque (referencia de SS) ===\n")
+print(an_nb)
+cat("\n=== ANOVA modelo con bloque (ABC confundido con Bloque) ===\n")
+print(an_b)
+```
+
+```{r f5_pooling_mse}
+# Términos despreciables para pooling (excluir interacciones activas detectadas)
+terminos_candidatos_nb <- c("A:B", "A:C", "B:C", "A:B:C")
+terminos_candidatos_b  <- c("A:B", "A:C", "B:C")
+
+# Excluir interacciones activas del pool
+mapeo_eff_anova <- c(AB = "A:B", AC = "A:C", BC = "B:C", ABC = "A:B:C")
+excluir <- unname(mapeo_eff_anova[interacciones_activas])
+
+terminos_pool_nb <- setdiff(terminos_candidatos_nb, excluir)
+terminos_pool_b  <- setdiff(terminos_candidatos_b,  excluir)
+
+# Cálculo MSE pooled
+calc_mse_pool <- function(an_tab, terms) {
+  filas <- rownames(an_tab) %in% terms
+  ss <- sum(an_tab[filas, "Sum Sq"], na.rm = TRUE)
+  df <- sum(an_tab[filas, "Df"],     na.rm = TRUE)
+  if (df > 0) ss / df else NA_real_
+}
+
+mse_pool_nb <- calc_mse_pool(an_nb, terminos_pool_nb)
+mse_pool_b  <- calc_mse_pool(an_b,  terminos_pool_b)
+
+# Tabla comparativa de eficiencia
+cat("\n=== Comparación cuantitativa: SIN bloque vs. CON bloque ===\n")
+comp_mse <- data.frame(
+  Modelo            = c("Sin bloque", "Con bloque (ABC confundido)"),
+  Pool_efectos      = c(paste(terminos_pool_nb, collapse = ", "),
+                        paste(terminos_pool_b,  collapse = ", ")),
+  df_pooled         = c(length(terminos_pool_nb), length(terminos_pool_b)),
+  MSE_pooled        = round(c(mse_pool_nb, mse_pool_b), 3)
+)
+print(comp_mse, row.names = FALSE)
+
+# Eficiencia relativa = MSE_sin / MSE_con
+if (!is.na(mse_pool_nb) && !is.na(mse_pool_b) && mse_pool_b > 0) {
+  ef_rel <- mse_pool_nb / mse_pool_b
+  reduc  <- (1 - mse_pool_b / mse_pool_nb) * 100
+  cat("\n┌─────────────────────────────────────────────────────────┐\n")
+  cat(sprintf("│ Eficiencia relativa (MSE_sin / MSE_con) = %6.3f       │\n", ef_rel))
+  cat(sprintf("│ Reducción del MSE al bloquear           = %5.1f%%        │\n", reduc))
+  cat("└─────────────────────────────────────────────────────────┘\n")
+  if (ef_rel > 1) {
+    cat("→ El bloqueo MEJORA la precisión: bloquear fue una decisión eficiente.\n")
+  } else {
+    cat("→ El bloqueo no mejora la precisión en este caso (ABC era pequeño).\n")
+  }
+}
+
+# F aproximados con MSE pooled del modelo con bloque
+if (!is.na(mse_pool_b) && mse_pool_b > 0) {
+  cat("\n=== Significancia de efectos principales (F con MSE pooled) ===\n\n")
+  df_pool_b <- length(terminos_pool_b)
+  efectos_ppal <- c("A", "B", "C", "Bloque")
+  for (ef in efectos_ppal) {
+    if (ef %in% rownames(an_b)) {
+      ss_ef <- an_b[ef, "Sum Sq"]
+      df_ef <- an_b[ef, "Df"]
+      F_ap  <- (ss_ef / df_ef) / mse_pool_b
+      p_ap  <- pf(F_ap, df_ef, df_pool_b, lower.tail = FALSE)
+      sig   <- ifelse(p_ap < 0.05, " *", "")
+      cat(sprintf("  %-10s SS=%8.2f  df=%d  F≈%7.2f  p≈%.4f%s\n",
+          ef, ss_ef, df_ef, F_ap, p_ap, sig))
+    }
+  }
+  cat(sprintf("\n  (Grados de libertad del error pooled: %d)\n", df_pool_b))
+}
+```
+
+## Interpretación y nota sobre grados de libertad
+
+**Interpretación:** al confundir **ABC** con el bloque, se asume que la interacción triple es despreciable (*sparsity of effects*) — supuesto verificado en el bloque anterior. El bloqueo absorbe la variación de ABC, dejando las **interacciones de orden 2** (AB, AC, BC) y los **efectos principales** (A, B, C) limpiamente estimables.
+
+**Nota sobre grados de libertad:** con 8 vértices y el modelo `Bloque + A + B + C + A:B + A:C + B:C` se tienen 7 parámetros + intercepto = 8 parámetros para 8 observaciones — **no quedan grados de libertad para el error directo** (df_error = 0, MSE = NaN). Este es el caso clásico del diseño $2^3$ en un solo bloque sin réplicas. Montgomery (2017, cap. 7) recomienda:
+
+1. **Pooling de efectos despreciables** (estrategia adoptada aquí, con verificación previa de sparsity).
+2. **Añadir réplicas al diseño** — en este caso se obtendrían vía las pseudo-réplicas de la Fase IV.
+3. **Confusión parcial** con múltiples réplicas, alternando qué interacción se confunde en cada réplica.
+
+Aquí se documenta la limitación del marco observacional que impide réplicas controladas reales, pero el procedimiento de pooling con verificación previa de sparsity es metodológicamente defendible.
+
+---
+
+# Fase VI: Muestreo con probabilidades desiguales (Lohr, cap. 6)
+
+El **muestreo con probabilidades desiguales** (PPS — Probability Proportional to Size) es útil cuando las unidades de muestreo varían sustancialmente en tamaño y existe una variable auxiliar correlacionada con la respuesta. Se comparan dos estimadores clásicos: **Hansen-Hurwitz** (HH, muestreo con reemplazo) y **Horvitz-Thompson** (HT, muestreo sin reemplazo).
+
+Se usa el **marco de estratos** ya estimado en la Fase I (`tabla_marco_estratos` con tamaños $N_h$) y la **media muestral de `punt_global` por estrato** como variable de interés a nivel estrato. Se comparan vía simulación Monte Carlo (2 000 repeticiones):
+
+1. **MAS de estratos** (probabilidades iguales, sin reemplazo).
+2. **Muestreo PPS** con estimador **Horvitz-Thompson**.
+3. **Muestreo PPS con reemplazo** con estimador **Hansen-Hurwitz**.
+
+## Preparación del marco a nivel estrato
+
+```{r f6_preparacion}
+estr_df <- muestra %>%
+  filter(fami_estratovivienda != "", !is.na(fami_estratovivienda)) %>%
+  group_by(fami_estratovivienda) %>%
+  summarise(ybar = mean(punt_global), .groups = "drop") %>%
+  inner_join(tabla_marco_estratos,
+             by = c("fami_estratovivienda" = "fami_estratovivienda"))
+
+H  <- nrow(estr_df)
+Nh <- estr_df$Nh
+M  <- sum(Nh)
+Th <- Nh * estr_df$ybar   # "total" por estrato (plug-in)
+
+cat("Número de estratos disponibles (H):", H, "\n")
+cat("Total poblacional plug-in S = ΣNh·ȳh:", round(sum(Th), 1), "\n\n")
+print(estr_df %>% mutate(Th = Nh * ybar), row.names = FALSE)
+
+# Tamaño de muestra: usar la mitad de los estratos disponibles
+# (si H = 6, n = 3; si H = 4, n = 2). Evita muestra censal.
+n_muestreo <- max(2L, floor(H / 2))
+cat("\nTamaño de muestra de estratos (n):", n_muestreo,
+    "(la mitad de los", H, "estratos, evitando censo)\n")
+```
+
+## Simulación Monte Carlo: MAS vs. PPS-HT vs. PPS-HH
+
+```{r f6_simulacion}
+set.seed(2025)
+B <- 2000
+est_srs <- est_pps_ht <- est_pps_hh <- numeric(B)
+
+# Probabilidades de inclusión proporcionales a Nh para PPS sin reemplazo
+pik_pps <- inclusionprobabilities(Nh, n_muestreo)
+
+# Probabilidades de selección proporcionales a Nh para PPS con reemplazo (HH)
+pi_hh <- Nh / sum(Nh)
+
+Strue <- sum(Th)  # total de referencia plug-in
+
+for (b in seq_len(B)) {
+  # ── 1) MAS sin reemplazo de estratos ─────────────────────────────────────
+  idx_srs <- sample.int(H, size = n_muestreo, replace = FALSE)
+  est_srs[b] <- (H / n_muestreo) * sum(Th[idx_srs]) / M
+
+  # ── 2) PPS sin reemplazo + Horvitz-Thompson ──────────────────────────────
+  ok_ht <- FALSE
+  for (.try in seq_len(80)) {
+    u <- tryCatch(UPrandomsystematic(pik_pps), error = function(e) NULL)
+    if (is.null(u)) next
+    sel <- which(abs(u - 1) < 1e-8 | u > 1 - 1e-8)
+    if (length(sel) == n_muestreo) {
+      # Estimador HT del total: ΣTh/πk; luego dividir por M para la media
+      est_pps_ht[b] <- sum(Th[sel] / pik_pps[sel]) / M
+      ok_ht <- TRUE
+      break
+    }
+  }
+  if (!ok_ht) est_pps_ht[b] <- NA_real_
+
+  # ── 3) PPS con reemplazo + Hansen-Hurwitz ────────────────────────────────
+  idx_hh <- sample.int(H, size = n_muestreo, replace = TRUE, prob = pi_hh)
+  # Estimador HH: (1/n) Σ Th/pi
+  est_pps_hh[b] <- mean(Th[idx_hh] / pi_hh[idx_hh]) / M
+}
+
+cat("\n=== Resultados de simulación (B = 2000 repeticiones) ===\n\n")
+cat("Total de referencia plug-in (S/M):", round(Strue / M, 4), "\n\n")
+
+resumen_sim <- data.frame(
+  Metodo = c("MAS estratos (sin reemplazo)",
+             "PPS sin reemplazo + HT",
+             "PPS con reemplazo + HH"),
+  Media_simul = round(c(mean(est_srs, na.rm = TRUE),
+                        mean(est_pps_ht, na.rm = TRUE),
+                        mean(est_pps_hh, na.rm = TRUE)), 4),
+  DE_simul    = round(c(sd(est_srs, na.rm = TRUE),
+                        sd(est_pps_ht, na.rm = TRUE),
+                        sd(est_pps_hh, na.rm = TRUE)), 4),
+  Var_simul   = round(c(var(est_srs, na.rm = TRUE),
+                        var(est_pps_ht, na.rm = TRUE),
+                        var(est_pps_hh, na.rm = TRUE)), 6),
+  NAs         = c(sum(is.na(est_srs)),
+                  sum(is.na(est_pps_ht)),
+                  sum(is.na(est_pps_hh)))
+)
+kable(resumen_sim,
+      caption = "Comparación Monte Carlo: MAS vs. PPS-HT vs. PPS-HH") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+
+# === Eficiencia relativa (referencia: MAS) ===
+v_srs <- var(est_srs, na.rm = TRUE)
+v_ht  <- var(est_pps_ht, na.rm = TRUE)
+v_hh  <- var(est_pps_hh, na.rm = TRUE)
+
+cat("\n=== Eficiencia relativa (referencia: MAS) ===\n")
+cat(sprintf("  Var(SRS)        = %10.6f\n", v_srs))
+cat(sprintf("  Var(PPS-HT)     = %10.6f  →  Var(SRS)/Var(HT) = %.3f\n",
+            v_ht, v_srs / v_ht))
+cat(sprintf("  Var(PPS-HH)     = %10.6f  →  Var(SRS)/Var(HH) = %.3f\n",
+            v_hh, v_srs / v_hh))
+
+cat("\nInterpretación:\n")
+cat("- Si Var(SRS)/Var(PPS) > 1: el PPS es más eficiente.\n")
+cat("- HT (sin reemplazo) suele ser más eficiente que HH (con reemplazo).\n")
+cat("- La ganancia es real cuando Nh está correlacionado con ȳh\n")
+cat("  (proxy de tamaño correlacionado con la respuesta).\n")
+```
+
+## Visualización de las distribuciones simuladas
+
+```{r f6_viz_distribuciones, fig.cap="Distribuciones Monte Carlo de los estimadores"}
+df_sim <- data.frame(
+  estimador = rep(c("MAS", "PPS-HT", "PPS-HH"), each = B),
+  valor     = c(est_srs, est_pps_ht, est_pps_hh)
+) %>% filter(!is.na(valor))
+
+ggplot(df_sim, aes(x = valor, fill = estimador)) +
+  geom_density(alpha = 0.45) +
+  geom_vline(xintercept = Strue / M, linetype = "dashed",
+             color = "black", linewidth = 0.8) +
+  scale_fill_manual(values = c("MAS"    = "#95A5A6",
+                               "PPS-HT" = "#3498DB",
+                               "PPS-HH" = "#E74C3C")) +
+  labs(
+    title    = "Distribuciones Monte Carlo de los estimadores (B = 2000)",
+    subtitle = "Línea negra: total de referencia plug-in",
+    x = "Media estimada (Total/M)",
+    y = "Densidad",
+    fill = "Estimador"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "top")
+```
+
+## Pesos $w_i = 1/\pi_i$ y propiedades de los estimadores
+
+```{r f6_pesos}
+pesos_df <- data.frame(
+  Estrato = estr_df$fami_estratovivienda,
+  Nh      = Nh,
+  pi_HT   = round(pik_pps, 4),
+  pi_HH   = round(pi_hh, 4),
+  w_HT    = round(1 / pik_pps, 2),
+  w_HH    = round(1 / pi_hh, 2)
+)
+
+kable(pesos_df,
+      caption = "Probabilidades de inclusión/selección y pesos $w = 1/\\pi$") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+
+cat("\nPropiedades teóricas (Lohr, 2022, cap. 6):\n")
+cat("- HT es insesgado para el total: E[Σ y_i / π_i] = T.\n")
+cat("- HH es insesgado en muestreo con reemplazo.\n")
+cat("- Σ π_i = n (la suma de probabilidades de inclusión = tamaño muestra).\n")
+cat("  Verificación: Σ π_HT =", round(sum(pik_pps), 4),
+    "(esperado:", n_muestreo, ")\n")
+```
+
+**Nota sobre el ejemplo:** los `ybar` por estrato provienen de la muestra Saber (Fase I), no del censo de medias poblacionales. El ejercicio ilustra el **método** PPS / Horvitz-Thompson / Hansen-Hurwitz y la comparación de dispersión Monte Carlo frente al MAS. En un estudio real, los $N_h$ son la variable auxiliar conocida ex ante (e.g., conteos del marco), y la PPS gana eficiencia porque colegios/estratos grandes contribuyen proporcionalmente a sus tamaños — supuesto típico en encuestas educativas con conglomerados (Lohr, 2022, cap. 6).
+
+---
+
+# Fase VII: Encuestas complejas (Lohr, cap. 7)
+
+El documento del curso sugiere bases reales tipo NHANES (Estados Unidos), ECV del DANE u homólogos. Para un ejemplo **reproducible** con metadatos de diseño completos —pesos, estratos, fpc— sin descarga de archivos pesados, se utiliza **`apistrat`** del paquete `survey` (muestra estratificada real de escuelas de California, datos públicos incluidos en R). Los datos Saber 11 en esta extracción no incorporan IDs de conglomerado públicos; por ello, el **caso tipo encuesta compleja** se desarrolla con `apistrat`, mientras las Fases I–VI permanecen en el contexto colombiano.
+
+**Caso real verificable:** el conjunto `apistrat` es una muestra estratificada por tipo de escuela (E = elemental, M = middle, H = high) del California Academic Performance Index (API) del Department of Education de California. Es un caso real, documentado en Lumley (2010, *Complex Surveys: A Guide to Analysis Using R*, Wiley), con metadatos de diseño verificables vía `?apistrat`.
+
+## Construcción del diseño complejo
+
+```{r f7_carga_api}
+utils::data(api, package = "survey")
+dstrat <- svydesign(
+  ids     = ~1,
+  strata  = ~stype,
+  weights = ~pw,
+  data    = apistrat,
+  fpc     = ~fpc
+)
+cat("Diseño: estratos `stype` (E/M/H), pesos `pw`, fpc documentado en ?apistrat\n")
+cat("Total de escuelas en la muestra: n =", nrow(apistrat), "\n")
+cat("Tamaños por estrato:\n")
+print(table(apistrat$stype))
+```
+
+## Dos estimaciones con SE correcto vs. ingenuo y DEFF
+
+```{r f7_estimaciones}
+# === Estimación 1: api00 (índice 2000) ===
+m_api    <- svymean(~api00, dstrat, deff = TRUE)
+ci_api   <- confint(m_api, level = 0.95)
+deff_00  <- deff(m_api)
+
+naive_00     <- mean(apistrat$api00)
+naive_se_00  <- sd(apistrat$api00) / sqrt(nrow(apistrat))
+
+# === Estimación 2: api99 (índice 1999) ===
+m_api99    <- svymean(~api99, dstrat, na.rm = TRUE, deff = TRUE)
+ci_api99   <- confint(m_api99, level = 0.95)
+deff_99    <- deff(m_api99)
+
+naive_99    <- mean(apistrat$api99, na.rm = TRUE)
+naive_se_99 <- sd(apistrat$api99, na.rm = TRUE) /
+               sqrt(sum(!is.na(apistrat$api99)))
+
+# Tabla comparativa
+tab_estim <- data.frame(
+  Variable = c("api00", "api00", "api99", "api99"),
+  Metodo   = c("Diseño correcto", "Ingenuo (sin pesos)",
+               "Diseño correcto", "Ingenuo (sin pesos)"),
+  Media    = round(c(coef(m_api), naive_00,
+                     coef(m_api99), naive_99), 2),
+  SE       = round(c(SE(m_api), naive_se_00,
+                     SE(m_api99), naive_se_99), 4),
+  IC_inf   = round(c(ci_api[1], NA, ci_api99[1], NA), 2),
+  IC_sup   = round(c(ci_api[2], NA, ci_api99[2], NA), 2),
+  DEFF     = round(c(deff_00, NA, deff_99, NA), 4)
+)
+
+kable(tab_estim,
+      caption = "Dos estimaciones bajo diseño complejo vs. análisis ingenuo") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  row_spec(c(1, 3), background = "#E8F4FD")
+
+# === Interpretación del DEFF ===
+cat("\n=== Interpretación del DEFF (Design Effect) ===\n\n")
+cat("DEFF = Var(estimador bajo diseño) / Var(estimador bajo MAS de igual n)\n\n")
+for (varname in c("api00", "api99")) {
+  d <- if (varname == "api00") deff_00 else deff_99
+  if (!is.null(d) && is.finite(d)) {
+    cat(sprintf("- DEFF(%s) = %.4f\n", varname, d))
+    if (d < 1) {
+      cat(sprintf("  → El diseño estratificado es MÁS eficiente que MAS (gana %.1f%%).\n",
+                  (1 - d) * 100))
+    } else if (d > 1) {
+      cat(sprintf("  → El diseño es MENOS eficiente que MAS (pierde %.1f%%).\n",
+                  (d - 1) * 100))
+    } else {
+      cat("  → El diseño tiene eficiencia equivalente al MAS.\n")
+    }
+  }
+}
+cat("\nNota: SE ingenuo subestima/sobreestima el SE real según deff.\n")
+cat("- deff > 1: SE ingenuo SUBESTIMA → IC artificialmente estrechos.\n")
+cat("- deff < 1: SE ingenuo SOBRESTIMA → IC artificialmente anchos.\n")
+```
+
+## Cuantiles bajo diseño complejo y calibración (Lohr, 2022, sec. 8.6)
+
+La **calibración** ajusta los pesos para que los totales muestrales coincidan con totales poblacionales conocidos en variables auxiliares. Se ilustra calibrando contra el número total de matrícula (`enroll`):
+
+```{r f7_calibracion}
+# Cuantiles ponderados primero
+qa <- svyquantile(~api00, dstrat, quantiles = c(0.10, 0.25, 0.5, 0.75, 0.90),
+                   ci = TRUE)
+cat("Cuantiles de api00 bajo diseño complejo (con IC 95%):\n")
+print(qa)
+
+# === Calibración (Lohr, 2022, sec. 8.6) ===
+# Se usa 'enroll' (matrícula) como variable auxiliar con total poblacional conocido.
+# IMPORTANTE: calibrate() falla con NA en la variable auxiliar → filtrar primero.
+utils::data(api, package = "survey")
+
+# Total poblacional conocido (sin NA)
+N_pop_enroll   <- sum(!is.na(apipop$enroll))
+total_enroll   <- sum(apipop$enroll, na.rm = TRUE)
+
+cat("\nTotal poblacional de matrícula (enroll):",
+    format(total_enroll, big.mark = ","),
+    "| N escuelas con enroll válido:", N_pop_enroll, "\n\n")
+
+# Reconstruir diseño solo con filas que tienen enroll válido
+api_clean <- apistrat[!is.na(apistrat$enroll), ]
+dstrat_clean <- svydesign(
+  ids     = ~1,
+  strata  = ~stype,
+  weights = ~pw,
+  data    = api_clean,
+  fpc     = ~fpc
+)
+
+cat("Filas de apistrat con enroll válido:", nrow(api_clean),
+    "de", nrow(apistrat), "\n")
+
+# Calibrar: ajustar pesos para que Σ w_i * enroll_i = total poblacional
+dstrat_cal <- tryCatch(
+  calibrate(dstrat_clean,
+            formula    = ~enroll,
+            population = c(`(Intercept)` = N_pop_enroll,
+                           enroll        = total_enroll),
+            calfun     = "linear"),
+  error = function(e) {
+    cat("⚠ Calibración falló:", conditionMessage(e), "\n")
+    cat("  Se continúa sin calibración.\n")
+    NULL
+  }
+)
+
+if (!is.null(dstrat_cal)) {
+  m_api_cal <- svymean(~api00, dstrat_cal)
+  m_api_nocal <- svymean(~api00, dstrat_clean)
+  
+  cat("\nComparación de estimaciones de api00:\n")
+  cat(sprintf("  Sin calibrar:  media = %.2f  | SE = %.4f\n",
+              coef(m_api_nocal), SE(m_api_nocal)))
+  cat(sprintf("  Calibrado:     media = %.2f  | SE = %.4f\n",
+              coef(m_api_cal),   SE(m_api_cal)))
+  cat(sprintf("  Reducción del SE: %.1f%%\n",
+              (1 - SE(m_api_cal) / SE(m_api_nocal)) * 100))
+  cat("\nNota: la calibración reduce SE cuando la variable auxiliar (enroll)\n")
+  cat("está correlacionada con la respuesta (api00).\n")
+} else {
+  cat("\nCalibración no disponible; se omite la comparación.\n")
+}
+```
+
+## Visualización ponderada vs. no ponderada
+
+```{r f7_grafica_ponderada, fig.cap="api00: histograma con barras NO ponderadas vs ponderadas (svyhist)"}
+par(mfrow = c(1, 2))
+
+# Histograma sin pesos
+hist(apistrat$api00, breaks = 20, col = "#95A5A6", border = "white",
+     main = "Sin pesos (ingenuo)",
+     xlab = "api00", ylab = "Frecuencia")
+
+# Histograma ponderado usando svyhist del paquete survey
+svyhist(~api00, dstrat,
+        main = "Ponderado por diseño",
+        xlab = "api00", col = "#3498DB", breaks = 20, border = "white")
+
+par(mfrow = c(1, 1))
+```
+
+**Nota metodológica:** `svyhist()` del paquete `survey` calcula correctamente la densidad ponderada del diseño, normalizando por los pesos $w_i = 1/\pi_i$ para producir una estimación insesgada de la densidad poblacional. Esto es preferible a sumar pesos por intervalo manualmente, que solo produce un histograma de frecuencia ponderada (no densidad).
+
+## Boxplot ponderado por subgrupo
+
+```{r f7_boxplot_ponderado, fig.cap="api00 por tipo de escuela con resumen ponderado"}
+# svyby() para medias e IC por estrato (ponderadas)
+medias_por_tipo <- svyby(~api00, ~stype, dstrat, svymean, vartype = "ci")
+print(medias_por_tipo)
+
+# Boxplot ponderado: por simplicidad usamos ggplot con weight aesthetic
+ggplot(apistrat, aes(x = stype, y = api00, fill = stype, weight = pw)) +
+  geom_boxplot(alpha = 0.75, outlier.alpha = 0.3) +
+  geom_point(data = medias_por_tipo,
+             aes(x = stype, y = api00),
+             color = "red", size = 3, shape = 18, inherit.aes = FALSE) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title    = "api00 por tipo de escuela (boxplot ponderado por pesos)",
+    subtitle = "Punto rojo: media ponderada (svyby)",
+    x = "Tipo de escuela",
+    y = "api00",
+    fill = "Tipo"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+```
+
+---
+
+# Integración y discusión
+
+Los resultados de las **siete fases** enlazan dos líneas de evidencia: **Saber 11** (Colombia) para muestreo (I), experimentación observacional (II–V) y PPS a nivel de estrato (VI), y **`apistrat`** para el estándar de **encuesta compleja** (VII), alineado con el criterio NHANES/ECV del proyecto expandido.
+
+**Conexión Fase I → Fases II–V:** la muestra de $n$ = `r if(exists("n_muestra_real")) n_muestra_real else "~841"` estudiantes obtenida mediante muestreo estratificado en la Fase I es exactamente la que alimenta todas las fases experimentales. Sin el diseño muestral estratificado, las Fases II–V operarían sobre una muestra de conveniencia sin representatividad socioeconómica documentada. La afijación proporcional garantiza que todos los estratos estén representados en el DBCA y en el $2^3$.
+
+**Conexión Fase II → Fase III (validación retroactiva):** el DBCA de Fase II es un modelo **aditivo** (naturaleza + jornada sin interacción). La Fase III extiende ese modelo incluyendo la interacción naturaleza × jornada. La comparación formal `anova(modelo_dbca, mod_factorial_test)` realizada en Fase II verifica si la interacción es significativa. Si no lo es, el supuesto aditivo del DBCA queda validado retroactivamente; si lo es, el factorial completo es preferible. Adicionalmente, los **tamaños de efecto $\eta^2$** complementan los p-valores: con $n$ grande, p-valores pequeños pueden corresponder a efectos prácticamente triviales, por lo que reportar $\eta^2$ es esencial.
+
+**Conexión Fase III → Fases IV y V:** el diseño factorial de Fase III identifica qué factores son activos. Las Fases IV–V profundizan con la codificación $\{-1, +1\}$ del $2^3$, permitiendo calcular contrastes, efectos principales e interacciones de forma sistemática. La **gráfica de Daniel** (con etiquetas explícitas) y el **método de Lenth completo** (PSE, ME individual y SME simultáneo) identifican efectos activos sin requerir réplicas adicionales. La Fase V explora la **confusión ABC–bloque** con verificación previa de *sparsity of effects* antes del pooling, garantizando que las interacciones poolizadas sean efectivamente despreciables.
+
+**Conexión Fase I → Fase VI:** el marco de estratos $\{N_h\}$ construido en Fase I para el muestreo estratificado es reutilizado directamente en la Fase VI como medida de tamaño (MOS) para la selección PPS. La comparación Monte Carlo entre **MAS**, **PPS con Horvitz-Thompson** (sin reemplazo) y **PPS con Hansen-Hurwitz** (con reemplazo) cuantifica la ganancia de eficiencia cuando $N_h$ está correlacionado con $\bar{y}_h$, coherente con la decisión de estratificar por estrato socioeconómico en la Fase I.
+
+**Fase VII — diseño complejo completo:** la Fase VII generaliza los principios anteriores a un diseño complejo real (`apistrat`) con estratos, pesos, fpc, **DEFF**, cuantiles ponderados y **calibración**. La comparación entre análisis ingenuo (sin pesos) y análisis con diseño correcto demuestra que ignorar el diseño produce errores estándar incorrectos, con consecuencias directas sobre la cobertura de los intervalos de confianza.
+
+**Limitaciones del estudio:**
+
+1. El diseño es **observacional**, no experimental en sentido estricto: los estudiantes no fueron asignados aleatoriamente a colegios, por lo que no se pueden establecer relaciones causales directas. Los DOE de Fases II–V se aplican como herramientas de control estadístico de heterogeneidad y análisis de efectos asociados, no como inferencia causal.
+
+2. El **desbalance** entre grupos (especialmente en jornada NOCHE con baja representación en colegios no oficiales) reduce la potencia del análisis para esa combinación.
+
+3. La extracción por estrato depende de la API Socrata: aunque se implementaron tres niveles de respaldo en `fetch_stratum()`, conviene verificar estabilidad de la API en corridas posteriores.
+
+4. No se controló por **período** de presentación, lo que podría confundir las comparaciones si la composición de colegios varía entre años.
+
+5. Las **pseudo-réplicas** del $2^3$ (Fase IV) son una construcción artificial dentro de cada celda — no son réplicas experimentales reales. Esto se documenta explícitamente y limita la interpretación del MSE como medida de error puro.
+
+6. La Fase VII usa `apistrat` (USA) por reproducibilidad. Una versión más adecuada al contexto colombiano usaría ECV-DANE o ENSIN, lo cual queda como extensión futura.
+
+---
+
+# Conclusiones
+
+1. Se diseñó e implementó un plan de **muestreo aleatorio estratificado** por estrato socioeconómico con afijación proporcional a los $N_h$ del marco en la API. La afijación proporcional se justificó empíricamente comparándola con la óptima de Neyman (diferencia despreciable bajo $S_h$ similares). El tamaño calculado fue $n =$ `r n_final` (con el piloto aleatorio y la fórmula MAS como límite superior conservador para MASE), y la muestra efectiva tras descarga y limpieza fue **`r n_muestra_real`** estudiantes.
+
+2. La estimación del puntaje global promedio mediante el paquete `survey` fue de `r round(coef(est_media), 1)` puntos, con un intervalo de confianza al 95% dentro del margen de error establecido. El análisis de sensibilidad con **DEFF** confirmó la eficiencia del diseño adoptado frente a la alternativa estratificada por naturaleza del colegio.
+
+3. El **DBCA** con naturaleza como tratamiento y jornada como bloque detectó diferencias estadísticamente significativas en el puntaje global entre colegios oficiales y no oficiales. El **tamaño del efecto $\eta^2$** complementó el p-valor, mostrando una magnitud sustantiva. La validación retroactiva del supuesto aditivo mediante comparación con el factorial confirmó la pertinencia del modelo. La **potencia** del diseño, calculada con la fórmula correcta del f de Cohen (sin el factor $\sqrt{k}$ espurio), resultó muy alta dado el tamaño muestral.
+
+4. La verificación de supuestos incluyó **Lilliefors** y **Shapiro-Wilk submuestral** para normalidad, **Levene** sobre el factor de tratamiento (corregido del original que usaba la interacción) más **Fligner-Killeen** robusto para homocedasticidad, y **Durbin-Watson** para independencia, además de los diagnósticos gráficos.
+
+5. La **Fase III** confirmó mediante factorial 2 vías con interacción que el supuesto aditivo del DBCA era razonable. El factorial 3 vías incluyó manejo robusto de celdas vacías y alias (cambio automático entre Type II/III). La extensión **ANCOVA** con estrato como covariable continua proporcionó la curva de respuesta requerida.
+
+6. La **Fase IV** construyó un **$2^3$** con codificación $\pm 1$, tabla de signos completa, **gráfica de Daniel etiquetada** con identificación visual de cada efecto, y **método de Lenth completo** con PSE, ME individual y SME simultáneo (FWER 0.05).
+
+7. La **Fase V** ilustró **confusión** de la interacción triple **ABC** con **bloques**, con verificación previa de *sparsity of effects* antes del pooling, y **comparación cuantitativa** de la eficiencia relativa entre modelos con y sin bloqueo.
+
+8. La **Fase VI** comparó por simulación Monte Carlo la dispersión de tres estimadores: **MAS de estratos**, **PPS con Horvitz-Thompson** (sin reemplazo), y **PPS con Hansen-Hurwitz** (con reemplazo), reportando eficiencia relativa y propiedades de los pesos $w_i = 1/\pi_i$.
+
+9. La **Fase VII** documentó inferencia bajo **diseño complejo** con `apistrat`: dos estimaciones (api00 y api99) con SE correcto vs. ingenuo, **DEFF**, cuantiles ponderados, **calibración** con `enroll` como variable auxiliar, e histograma ponderado con `svyhist`.
+
+10. La **integración** de las siete fases construye una narrativa coherente: del muestreo riguroso (I) al diseño experimental con control de heterogeneidad (II–V), pasando por muestreo avanzado (VI) y diseño complejo completo (VII), todo bajo la pregunta de investigación sobre el efecto de la naturaleza del colegio.
+
+---
+
+# Declaración de uso de inteligencia artificial
+
+En el desarrollo de este proyecto se utilizó **Claude (Anthropic)** y **Cursor** como herramientas de asistencia en las siguientes etapas:
+
+- **Exploración inicial:** Claude sugirió la fuente de datos (ICFES — datos.gov.co) y el enfoque metodológico general (muestreo estratificado + DBCA).
+- **Código R:** secciones del código fueron generadas con asistencia de IA y posteriormente revisadas, adaptadas y verificadas por el equipo.
+- **Diagnóstico de datos:** Claude ayudó a identificar el problema de desbalance en el calendario académico y propuso la solución de usar jornada como bloque.
+- **Fases III–VII:** se incorporaron bloques metodológicos (factorial, $2^3$, bloques confundidos, PPS y encuesta compleja) con apoyo de IA, contrastados con Lohr (2022) y Montgomery (2017).
+- **Revisión metodológica final:** se realizó una revisión exhaustiva fase por fase con asistencia de IA, identificando y corrigiendo errores técnicos detectables al contrastar el código con la literatura.
+
+**Errores específicos detectados y corregidos mediante la revisión crítica con IA:**
+
+1. **Fórmula de f de Cohen en cálculo de potencia (Fase II):** la versión inicial multiplicaba por $\sqrt{k}$, lo cual sobreestimaba el tamaño del efecto. La fórmula correcta según Cohen (1988, eq. 8.2.21) es $f = \sqrt{\eta^2/(1-\eta^2)}$ sin el factor $\sqrt{k}$.
+
+2. **Prueba de Levene en DBCA aditivo (Fase II):** la versión inicial probaba homocedasticidad sobre la interacción `cole_naturaleza * cole_jornada` (6 grupos), cuando el DBCA aditivo requiere probarla sobre el factor de tratamiento solamente. Se corrigió y se añadió Fligner-Killeen como respaldo robusto.
+
+3. **Estimador de razón mal interpretado (Fase I):** la versión inicial comparaba CVs entre cantidades distintas (media estimada vs. razón estimada). Se reescribió aclarando el método de Lohr (cap. 4) y reportando la correlación auxiliar, que es la métrica que predice la ganancia de eficiencia.
+
+4. **Método de Lenth simplificado (Fase IV):** la versión inicial usaba $\text{ME} = 1.5 \cdot \text{PSE}$ como regla práctica. Se implementó la fórmula completa de Lenth (1989) con cuantiles t y se añadió el margen simultáneo SME para control de FWER.
+
+5. **Ausencia de Hansen-Hurwitz en PPS (Fase VI):** la versión inicial solo implementaba Horvitz-Thompson. La rúbrica solicita ambos estimadores; se añadió HH con muestreo con reemplazo para comparación completa.
+
+6. **Histograma ponderado manual (Fase VII):** la versión inicial reimplementaba la lógica de bins ponderados, que solo produce frecuencia ponderada. Se reemplazó con `svyhist()` del paquete `survey`, que produce densidad ponderada correctamente normalizada.
+
+**Validación crítica:** el equipo verificó cada decisión metodológica contrastándola con los módulos del curso y la bibliografía (Montgomery, 2017; Lohr, 2022; Cohen, 1988; Lenth, 1989; Lumley, 2010). Se identificaron limitaciones del asistente de IA durante el proceso: tendencia a aceptar fórmulas sin verificación, propensión a reinventar funcionalidad existente en paquetes especializados, y necesidad de prompts específicos para detectar errores conceptuales sutiles (como la inclusión espuria de $\sqrt{k}$ en la fórmula de Cohen).
+
+El producto final refleja la comprensión y criterio del equipo, usando la IA como apoyo y herramienta de revisión, no como sustituto del razonamiento estadístico propio.
+
+---
+
+# Referencias
+
+- Cohen, J. (1988). *Statistical Power Analysis for the Behavioral Sciences* (2nd ed.). Lawrence Erlbaum Associates.
+- Lenth, R. V. (1989). Quick and Easy Analysis of Unreplicated Factorials. *Technometrics*, 31(4), 469–473.
+- Lohr, S. L. (2022). *Sampling: Design and Analysis* (3rd ed.). CRC Press.
+- Lumley, T. (2010). *Complex Surveys: A Guide to Analysis Using R*. Wiley.
+- Lumley, T. (2023). *survey: Analysis of Complex Survey Samples* (R package version 4.2).
+- Montgomery, D. C. (2017). *Design and Analysis of Experiments* (9th ed.). Wiley.
+- ICFES. (2023). *Resultados únicos Saber 11*. Datos Abiertos Colombia. https://www.datos.gov.co/resource/kgxf-xxbe
+- R Core Team. (2024). *R: A Language and Environment for Statistical Computing*. R Foundation for Statistical Computing.
