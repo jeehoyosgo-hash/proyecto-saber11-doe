@@ -1,107 +1,56 @@
-# Instalar si no tienes
-install.packages("httr")
-install.packages("jsonlite")
+# Borrador de apoyo — el flujo completo y reproducible está en:
+#   Proyecto_Saber11_DOE_final.Rmd
+#
+# Resumen del cambio (Opción A — MASE real):
+#   1) API agregada: $select + $group por fami_estratovivienda → N_h y N = sum(N_h)
+#   2) n con corrección finita usando ese N
+#   3) Afijación proporcional (restos mayores) → n_h por estrato
+#   4) Por cada estrato: SoQL ORDER BY random() LIMIT n_h, o respaldo $where + slice_sample
+#   5) survey::svydesign con strata, fpc = N_h y weights = N_h / n_h en la muestra
+#
+# Fases III–VII (factorial, 2^k, bloques, PPS, encuesta compleja): solo en Proyecto_Saber11_DOE_final.Rmd
 
 library(httr)
-library(jsonlite)
+library(dplyr)
 
-# Descarga 000 registros via API Socrata (ICFES datos.gov.co)
-url <- "https://www.datos.gov.co/resource/kgxf-xxbe.csv?$limit=10000&$offset=0"
+url_api <- "https://www.datos.gov.co/resource/kgxf-xxbe.csv"
 
-res <- GET(url)
-datos_raw <- content(res, as = "text", encoding = "UTF-8")
-icfes <- read.csv(text = datos_raw, stringsAsFactors = FALSE)
+# --- Marco N_h (misma consulta que el .Rmd) ---------------------------------
+aggr_txt <- content(
+  GET(
+    url_api,
+    query = list(
+      "$select" = "fami_estratovivienda, count(*)",
+      "$group"  = "fami_estratovivienda",
+      "$limit"  = "100000"
+    )
+  ),
+  as = "text",
+  encoding = "UTF-8"
+)
+tabla_marco_raw <- read.csv(text = aggr_txt, stringsAsFactors = FALSE, check.names = FALSE)
+names(tabla_marco_raw)[1:2] <- c("fami_estratovivienda", "Nh")
+tabla_marco_estratos <- tabla_marco_raw %>%
+  filter(!is.na(fami_estratovivienda), fami_estratovivienda != "") %>%
+  mutate(Nh = as.numeric(Nh)) %>%
+  filter(Nh > 0)
 
-# Ver estructura
-dim(icfes)
-head(icfes)
-names(icfes)
+N_frame <- sum(tabla_marco_estratos$Nh)
+cat("N marco (API):", format(N_frame, big.mark = ","), "\n")
 
-library(httr)
-library(jsonlite)
-
-# ── PASO 1: Muestra piloto para estimar varianza ──────────────────────────
+# --- Piloto y n (igual que en el informe) -----------------------------------
 url_piloto <- "https://www.datos.gov.co/resource/kgxf-xxbe.csv?$limit=300&$offset=0"
-piloto <- read.csv(text = content(GET(url_piloto), as = "text", encoding = "UTF-8"))
-
-# Limpiar punt_global (convertir a numérico)
+piloto <- read.csv(text = content(GET(url_piloto), as = "text", encoding = "UTF-8"),
+                   stringsAsFactors = FALSE)
 piloto$punt_global <- as.numeric(piloto$punt_global)
 piloto <- piloto[!is.na(piloto$punt_global), ]
 
-# Ver varianza y media del piloto
-cat("Media piloto:", mean(piloto$punt_global), "\n")
-cat("Varianza piloto (S²):", var(piloto$punt_global), "\n")
-cat("Desv. estándar:", sd(piloto$punt_global), "\n")
+Z  <- 1.96
+e  <- 3
+S2 <- var(piloto$punt_global)
+N  <- N_frame
+n_inf   <- (Z^2 * S2) / e^2
+n_final <- ceiling(n_inf / (1 + (n_inf / N)))
+cat("n_final calculado:", n_final, "\n")
 
-# ── PASO 2: Cálculo del tamaño de muestra (MAS con población grande) ──────
-# Supuestos que vamos a justificar en el informe:
-Z    <- 1.96       # 95% de confianza
-e    <- 3          # margen de error: 3 puntos en escala Saber 11
-S2   <- var(piloto$punt_global)
-N    <- 7109704    # población total (lo viste en datos.gov.co)
-
-n_infinito <- (Z^2 * S2) / e^2
-n_final    <- ceiling(n_infinito / (1 + (n_infinito / N)))
-n_final
-
-cat("\n── Cálculo del tamaño de muestra ──\n")
-cat("n sin corrección finita:", ceiling(n_infinito), "\n")
-cat("n con corrección finita:", n_final, "\n")
-
-library(dplyr)
-
-# ── PASO 3: Descarga de la muestra completa (n=841) ───────────────────────
-url_muestra <- "https://www.datos.gov.co/resource/kgxf-xxbe.csv?$limit=841&$offset=300"
-# offset=300 para no repetir el piloto
-
-muestra_raw <- read.csv(text = content(GET(url_muestra), 
-                                       as = "text", encoding = "UTF-8"))
-
-# Limpiar variables clave
-muestra <- muestra_raw %>%
-  mutate(
-    punt_global      = as.numeric(punt_global),
-    fami_estratovivienda = as.factor(fami_estratovivienda),
-    cole_naturaleza  = as.factor(cole_naturaleza),
-    cole_calendario  = as.factor(cole_calendario),
-    cole_jornada     = as.factor(cole_jornada)
-  ) %>%
-  filter(!is.na(punt_global))
-
-# ── PASO 4: Verificar distribución por estrato (variable de estratificación)
-cat("Distribución por estrato socioeconómico:\n")
-print(table(muestra$fami_estratovivienda))
-
-cat("\nDistribución por naturaleza del colegio:\n")
-print(table(muestra$cole_naturaleza))
-
-cat("\nDistribución por calendario:\n")
-print(table(muestra$cole_calendario))
-
-cat("\nResumen de punt_global:\n")
-print(summary(muestra$punt_global))
-
-
-cat("Distribución por jornada:\n")
-print(table(muestra$cole_jornada))
-
-cat("\nCombinación naturaleza x jornada:\n")
-print(table(muestra$cole_naturaleza, muestra$cole_jornada))
-
-# ── Filtrar para DBCA: 3 jornadas con balance aceptable ──────────────────
-dbca_data <- muestra %>%
-  filter(cole_jornada %in% c("MAÑANA", "COMPLETA", "NOCHE")) %>%
-  filter(!is.na(punt_global)) %>%
-  droplevels()
-
-cat("Tabla de balance tras filtro:\n")
-print(table(dbca_data$cole_naturaleza, dbca_data$cole_jornada))
-
-cat("\nTotal observaciones para DBCA:", nrow(dbca_data), "\n")
-
-cat("\nMedia de punt_global por naturaleza:\n")
-print(tapply(dbca_data$punt_global, dbca_data$cole_naturaleza, mean))
-
-cat("\nMedia de punt_global por jornada:\n")
-print(tapply(dbca_data$punt_global, dbca_data$cole_jornada, mean))
-
+cat("\nPara la descarga estratificada completa, renderizar el .Rmd (varias peticiones HTTP).\n")
