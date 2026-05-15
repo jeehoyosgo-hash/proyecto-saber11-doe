@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guía de Conceptos — Saber 11</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --p:#3D008D;--pk:#ED1E79;--gold:#FDB913;--teal:#1D9E75;
+  --bg:#0A0A1A;--s1:#12122A;--s2:#1A1A35;
+  --border:rgba(237,30,121,0.18);--text:#F0EEF8;--muted:rgba(240,238,248,0.55);
+  --grad:linear-gradient(140deg,#3D008D 0%,#ED1E79 100%);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+
+.selector{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:32px;padding:32px;}
+.selector h1{font-size:28px;font-weight:800;text-align:center;}
+.selector h1 span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.selector p{font-size:16px;color:var(--muted);text-align:center;line-height:1.6;}
+.person-btns{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;}
+.person-btn{padding:24px 48px;border-radius:16px;border:1px solid var(--border);background:var(--s1);color:var(--text);font-size:20px;font-weight:700;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all .2s;}
+.person-btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(237,30,121,0.2);}
+.person-btn.j{border-color:rgba(127,119,221,0.5);}
+.person-btn.y{border-color:rgba(29,158,117,0.5);}
+.mode-label{font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);text-align:center;}
+
+.app{display:none;}
+.app.active{display:block;}
+
+.top-bar{background:var(--s1);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;min-height:52px;}
+.tl{display:flex;align-items:center;gap:14px;}
+.tlogo{font-size:14px;font-weight:800;}
+.tlogo span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.pbadge{font-size:12px;font-weight:700;padding:4px 14px;border-radius:20px;}
+.pbj{background:rgba(127,119,221,0.2);color:#AFA9EC;}
+.pby{background:rgba(29,158,117,0.2);color:#5DCAA5;}
+.tr{display:flex;align-items:center;gap:12px;}
+.ptext{font-size:13px;color:var(--muted);}
+.pbg{width:120px;height:6px;background:var(--s2);border-radius:3px;overflow:hidden;}
+.pbf{height:100%;background:var(--grad);border-radius:3px;transition:width .4s;}
+.cbtn{padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all .2s;}
+.cbtn:hover{border-color:var(--pk);color:var(--text);}
+
+.content{max-width:860px;margin:0 auto;padding:28px 24px;}
+
+.scard{background:var(--s1);border:1px solid var(--border);border-radius:20px;padding:28px;margin-bottom:20px;}
+.sheader{display:flex;align-items:center;gap:14px;margin-bottom:24px;}
+.snum{width:36px;height:36px;border-radius:50%;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0;}
+.stag{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
+.stitle{font-size:18px;font-weight:700;color:var(--text);}
+
+/* TELEPROMPTER */
+.sbox{background:var(--s2);border-radius:14px;padding:20px 24px;margin-bottom:14px;border-left:4px solid var(--pk);}
+.sblabel{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--pk);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.sbtext{font-size:16px;color:var(--text);line-height:1.9;}
+.sbtext em{color:var(--gold);font-style:normal;font-weight:600;}
+
+/* EJEMPLO CONCRETO */
+.exbox{background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.25);border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;gap:12px;}
+.exicon{font-size:18px;flex-shrink:0;margin-top:2px;}
+.exlabel{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#5DCAA5;margin-bottom:4px;}
+.extext{font-size:14px;color:var(--muted);line-height:1.6;}
+.extext strong{color:var(--text);font-weight:600;}
+
+/* CUIDADO */
+.warnbox{background:rgba(253,185,19,0.06);border:1px solid rgba(253,185,19,0.25);border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;gap:12px;}
+.warnlabel{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--gold);margin-bottom:4px;}
+.warntext{font-size:14px;color:var(--muted);line-height:1.6;}
+.warntext strong{color:var(--text);font-weight:600;}
+
+/* FORMULAS — accordion */
+.facc{border:1px solid rgba(253,185,19,0.25);border-radius:12px;margin-bottom:14px;overflow:hidden;}
+.facc-h{padding:14px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background .15s;}
+.facc-h:hover{background:rgba(253,185,19,0.05);}
+.facc-title{font-size:14px;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:8px;}
+.facc-body{padding:0 18px;max-height:0;overflow:hidden;transition:max-height .4s ease,padding .2s;}
+.facc-body.open{max-height:1600px;padding:16px 18px;border-top:1px solid rgba(253,185,19,0.15);}
+.fchev{transition:transform .3s;font-size:12px;color:var(--muted);}
+.fchev.open{transform:rotate(180deg);}
+
+.fblock{margin-bottom:20px;}
+.fblock:last-child{margin-bottom:0;}
+.fblock-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;}
+.frow{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap;}
+.fsym{font-family:'Fira Code',monospace;font-size:15px;color:var(--gold);font-weight:600;min-width:60px;}
+.fdef{font-size:14px;color:var(--muted);line-height:1.6;}
+.fdef strong{color:var(--text);font-weight:500;}
+.fformula{font-family:'Fira Code',monospace;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin:10px 0;color:var(--gold);line-height:1.7;}
+.fcalc{font-family:'Fira Code',monospace;font-size:13px;background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.2);border-radius:8px;padding:10px 14px;margin:6px 0;color:#5DCAA5;line-height:1.7;}
+.fnote{font-size:13px;color:var(--muted);line-height:1.6;margin-top:6px;font-style:italic;}
+
+/* QA */
+.qasec{margin-top:4px;}
+.qatitle{font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--gold);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.qaitem{background:rgba(253,185,19,0.05);border:1px solid rgba(253,185,19,0.18);border-radius:12px;margin-bottom:8px;overflow:hidden;}
+.qaq{padding:14px 18px;font-size:14px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:var(--text);transition:background .15s;}
+.qaq:hover{background:rgba(253,185,19,0.08);}
+.qaa{padding:0 18px;max-height:0;overflow:hidden;transition:max-height .35s ease,padding .2s;}
+.qaa.open{max-height:500px;padding:14px 18px;border-top:1px solid rgba(253,185,19,0.12);}
+.qaa p{font-size:14px;color:var(--muted);line-height:1.7;margin:0;}
+.qaa p strong{color:var(--text);font-weight:500;}
+.qchev{transition:transform .3s;font-size:12px;color:var(--muted);}
+.qchev.open{transform:rotate(180deg);}
+
+/* NAV */
+.navbar{display:flex;justify-content:space-between;align-items:center;margin-top:24px;padding-top:20px;border-top:1px solid var(--border);}
+.nbtn{padding:12px 28px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:15px;font-weight:600;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all .2s;}
+.nbtn:hover:not(:disabled){border-color:var(--pk);color:var(--text);}
+.nbtn:disabled{opacity:0.3;cursor:not-allowed;}
+.nbtn.nxt{background:var(--grad);border-color:transparent;color:#fff;}
+.nbtn.nxt:hover{opacity:0.9;}
+.sctr{font-size:14px;color:var(--muted);}
+
+.done{text-align:center;padding:60px 32px;}
+.done h2{font-size:28px;font-weight:800;margin-bottom:12px;}
+.done h2 span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.done p{font-size:16px;color:var(--muted);line-height:1.7;max-width:500px;margin:0 auto 24px;}
+</style>
+</head>
+<body>
+
+<div class="selector" id="sel">
+  <h1>Guía de <span>Conceptos</span></h1>
+  <p>Estadística Aplicada — Saber 11: Muestreo &amp; DOE<br>Universidad Santo Tomás · 2026-I</p>
+  <div class="mode-label">Selecciona quién estudia</div>
+  <div class="person-btns">
+    <button class="person-btn j" onclick="init('j')">Julián Toloza</button>
+    <button class="person-btn y" onclick="init('y')">Yeison Hoyos</button>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <div class="top-bar">
+    <div class="tl">
+      <div class="tlogo"><span>Conceptos</span> · Saber 11</div>
+      <span class="pbadge" id="badge"></span>
+    </div>
+    <div class="tr">
+      <span class="ptext" id="ptext">1/5</span>
+      <div class="pbg"><div class="pbf" id="pbf" style="width:20%"></div></div>
+      <button class="cbtn" onclick="back()">Cambiar persona</button>
+    </div>
+  </div>
+  <div class="content" id="cont"></div>
+</div>
+
+<script>
+const D = {
+/* ─────────────────────────────────────────────
+   JULIÁN: Fase I — Muestreo y estimación
+───────────────────────────────────────────── */
+j: [
+  {
+    tag:'Bloque 1 · Fundamentos', title:'¿Qué es el muestreo y por qué lo usamos?',
+    script:`El muestreo es la técnica con la que elegimos una parte de la población para estudiarla, en lugar de estudiar a todos. La razón es simple: estudiar los <em>7.1 millones</em> de registros del ICFES sería imposible en tiempo y recursos.
+
+Lo que hacemos es tomar una <em>muestra representativa</em> — un subconjunto que refleja bien a toda la población — y con ella estimamos parámetros como la media del puntaje nacional. La clave está en "representativa": si la muestra está sesgada, las conclusiones serán incorrectas aunque tengamos muchos datos.
+
+En nuestro proyecto usamos <em>muestreo estratificado por estrato socioeconómico</em> porque el rendimiento varía sistemáticamente entre estratos. Dividir en estratos garantiza que no nos queden, por azar, casi todos los datos de un solo estrato.`,
+    ejemplo:{icon:'📌',h:'Analogía para no olvidar',a:'Si quieres saber qué tan dulce está una olla de sopa, no te la tomas entera — pruebas una cucharada. Pero primero revuelves bien (= aleatorización). Si no revuelves y la cucharada es de la superficie, puede que esté más salada que el fondo (= sesgo).'},
+    warning:{h:'Distinción clave en el examen',a:'<strong>Parámetro</strong> (μ, σ²) = dato real de toda la población — nunca lo conocemos con certeza. <strong>Estadístico</strong> (x̄, S²) = lo que calculamos de la muestra. La estimación convierte estadísticos en estimadores de parámetros.'},
+    formulas:[
+      {
+        title:'Tipos de muestreo que debemos saber explicar',
+        items:[
+          {sym:'MAS',def:'<strong>Muestreo Aleatorio Simple:</strong> cada elemento tiene la misma probabilidad de ser elegido. Es el más sencillo pero puede sub-representar grupos pequeños.'},
+          {sym:'Estrat.',def:'<strong>Muestreo Estratificado:</strong> dividimos la población en estratos (grupos homogéneos) y muestreamos de cada uno. Garantiza representación de todos los grupos. → Este usamos nosotros.'},
+          {sym:'Sist.',def:'<strong>Muestreo Sistemático:</strong> elegimos cada k-ésimo elemento de una lista. Riesgo: si hay un patrón cada k elementos, hay sesgo.'},
+          {sym:'Congl.',def:'<strong>Muestreo por Conglomerados:</strong> muestreamos grupos completos (ej: colegios) en vez de individuos. Más barato pero menos preciso.'},
+        ],
+        nota:'La elección del método depende de la estructura de la población y de los recursos disponibles. En nuestro caso el estrato socioeconómico es una fuente de variabilidad conocida → estratificado es óptimo.'
+      }
+    ],
+    qa:[
+      {q:'¿Por qué no hicieron un censo (n=7.1M)?',a:'Tres razones: (1) tiempo — descargar y procesar 7.1M registros por la API del ICFES es inviable en semestres; (2) costo computacional — el ANOVA con 7M filas requeriría memoria masiva; (3) innecesario — con n=841 bien diseñado la estimación ya tiene margen de error ±3 pts, que es suficiente para nuestros objetivos.'},
+      {q:'¿Qué es el sesgo de muestreo?',a:'Es el error sistemático que ocurre cuando la muestra no representa bien a la población. Por ejemplo, si solo descargáramos registros de estudiantes bogotanos, la media estimada sería mayor que la nacional real. El muestreo aleatorio y estratificado minimiza este sesgo.'}
+    ]
+  },
+  {
+    tag:'Bloque 2 · Tamaño de muestra', title:'¿Cómo calculamos n = 841?',
+    script:`Para calcular el tamaño de muestra necesitamos fijar tres cosas: el <em>nivel de confianza</em> (cuánta seguridad queremos), el <em>margen de error</em> (cuánto error toleramos) y una <em>estimación de la varianza</em> (qué tan dispersos están los datos).
+
+Primero tomamos un <em>piloto de 300 observaciones</em> para estimar la varianza: S²=1,968.5. Con eso y usando Z=1.96 (95% de confianza) y e=3 puntos de margen de error, la fórmula nos dio <em>n = 841</em>.
+
+La intuición es: si todos los estudiantes sacaran el mismo puntaje (S²=0), bastaría con medir uno solo. Si la dispersión es enorme, necesitamos muchos más. La fórmula balancea ese trade-off.`,
+    ejemplo:{icon:'🎯',h:'El trade-off de precisión',a:'<strong>e=3 pts, n=841.</strong> Si quisiéramos e=1 pt (tres veces más preciso), n subiría a ~7,558 — nueve veces más datos. Ser más preciso es caro. Por eso elegimos e=3, que representa menos del 1% de la escala total de Saber 11 (≈100 a 500 pts).'},
+    warning:{h:'Corrección de población finita',a:'La fórmula incluye N en el denominador para corregir el hecho de que la población es finita. Con N=7.1M >> n=841, el factor de corrección finita ≈ 1, así que prácticamente no cambia el resultado. Si N fuera 1,000, sí cambiaria mucho.'},
+    formulas:[
+      {
+        title:'Fórmula del tamaño de muestra (población finita)',
+        items:[
+          {sym:'N',def:'<strong>Tamaño poblacional</strong> = 7,109,704 registros ICFES en datos.gov.co'},
+          {sym:'Z',def:'<strong>Valor crítico normal</strong> = 1.96 para 95% de confianza. (Si fuera 99% → Z=2.576, necesitaríamos más muestra.)'},
+          {sym:'S²',def:'<strong>Varianza estimada</strong> = 1,968.5 — obtenida del piloto de 300 obs. Mide dispersión del puntaje.'},
+          {sym:'e',def:'<strong>Margen de error</strong> = 3 pts — el máximo error que aceptamos. El IC tendrá ancho total ±3 puntos.'},
+          {sym:'n',def:'<strong>Resultado</strong> = 841 observaciones — redondeado hacia arriba para no quedarnos cortos.'},
+        ],
+        formula:'n = ⌈ (N · Z² · S²) / (N · e² + Z² · S²) ⌉',
+        calculo:'n = ⌈ (7,109,704 · 3.8416 · 1,968.5) / (7,109,704 · 9 + 3.8416 · 1,968.5) ⌉\nn = ⌈ 53,842,186 / 64,025 ⌉ = ⌈ 840.88 ⌉ = 841',
+        nota:'La muestra piloto de 300 es estándar: suficiente para estimar S² con estabilidad, sin gastar observaciones de la muestra definitiva.'
+      },
+      {
+        title:'¿Por qué estratificado y no MAS?',
+        items:[
+          {sym:'Var(MAS)',def:'Con MAS toda la dispersión entre estratos queda en el error → varianza del estimador más alta.'},
+          {sym:'Var(Est.)',def:'Con estratificado esa dispersión entre estratos se controla → varianza del estimador más baja con el mismo n.'},
+        ],
+        calculo:'Varianza estimador estratificado ≤ Varianza estimador MAS\n(cuando la varianza entre estratos es grande → nuestro caso: estrato 1 ≈ 220 pts, estrato 6 ≈ 290 pts)',
+        nota:'En términos simples: el estratificado es más eficiente porque aprovecha que sabemos de antemano que los estratos son diferentes.'
+      }
+    ],
+    qa:[
+      {q:'¿Por qué el piloto fue de 300 y no de otro número?',a:'300 es suficiente para que S² converja a un valor estable. Con menos de 100 obs, S² puede variar mucho entre corridas. Con más de 500 "gastamos" observaciones que podrían ir a la muestra final. Es un balance estándar en la práctica estadística.'},
+      {q:'Si la varianza real fuera el doble (S²=4000), ¿qué pasaría?',a:'El n subiría proporcionalmente: con S²=4,000 el resultado sería aproximadamente n≈1,700. Por eso es importante hacer el piloto — si la varianza real es mayor que la estimada, la muestra final puede ser insuficiente.'}
+    ]
+  },
+  {
+    tag:'Bloque 3 · Estimación', title:'Intervalo de confianza y estimador de razón',
+    script:`Con los 841 estudiantes usamos el paquete <em>survey</em> de R, que incorpora los pesos del diseño estratificado. Eso es importante: no podemos simplemente calcular la media aritmética porque los estratos tienen diferente tamaño y se muestrean con diferente intensidad.
+
+La media estimada fue <em>250.74 puntos</em>, con IC 95% de <em>[246.42, 255.06]</em>.
+
+También usamos un <em>estimador de razón</em> para lectura crítica, usando matemáticas como variable auxiliar. Esto funciona porque matemáticas y lectura están correlacionadas: si un estudiante saca alto en una, tiende a sacar alto en la otra. Aprovechamos esa correlación para reducir la incertidumbre — el coeficiente de variación bajó de <em>0.88% a 0.78%</em>.`,
+    ejemplo:{icon:'💡',h:'¿Qué significa "IC del 95%"?',a:'<strong>No</strong> significa que hay 95% de probabilidad de que μ esté en [246.42, 255.06]. Significa que si repitiéramos el muestreo 100 veces y construyéramos 100 intervalos, esperaríamos que 95 de ellos contengan el valor real de μ. Una vez calculado, el intervalo o contiene a μ o no — no hay probabilidad.'},
+    warning:{h:'Confusión frecuente en sustentación',a:'El IC <strong>no</strong> es el margen de error que fijamos (±3 pts). Ese era el objetivo de diseño. El IC final salió ±4.33/2 ≈ ±2.16 pts — <strong>mejor que lo que pedimos</strong>, porque la varianza real fue menor que la del piloto.'},
+    formulas:[
+      {
+        title:'Intervalo de Confianza (IC)',
+        items:[
+          {sym:'x̄',def:'<strong>Media muestral ponderada</strong> = 250.74 pts — estimación puntual'},
+          {sym:'SE',def:'<strong>Error estándar</strong> = 2.21 pts. Mide la precisión de la estimación. Cuanto más chico, más precisa.'},
+          {sym:'Z·SE',def:'<strong>Margen de error real</strong> = 1.96 × 2.21 = ±4.33/2 ≈ ±2.16 pts < 3 pts objetivo ✓'},
+        ],
+        formula:'IC = x̄ ± Z · SE = 250.74 ± 1.96 · 2.21',
+        calculo:'IC = [250.74 − 4.33, 250.74 + 4.33] / 2\nIC = [246.42 , 255.06]',
+        nota:'El IC no contiene el 0 y tiene una amplitud razonable. La estimación es válida y cumple el objetivo de precisión.'
+      },
+      {
+        title:'Estimador de razón vs estimador simple',
+        items:[
+          {sym:'R̂',def:'<strong>Estimador de razón:</strong> usa una variable auxiliar X (matemáticas) correlacionada con Y (lectura crítica) para hacer la estimación más precisa.'},
+          {sym:'ρ',def:'<strong>Correlación entre variables:</strong> si ρ es alta y positiva, el estimador de razón es siempre más eficiente que el simple.'},
+          {sym:'CV',def:'<strong>Coeficiente de Variación</strong> = SE/media × 100. Simple: 0.88%, Razón: 0.78% → razón gana.'},
+        ],
+        formula:'R̂ = Ȳ / X̄ · μ_X',
+        calculo:'CV simple    = 0.88%\nCV de razón  = 0.78%\nGanancia     = 0.10% → estimador de razón más eficiente ✓',
+        nota:'La ganancia parece pequeña pero en estudios con millones de obs se traduce en necesitar menos datos para igual precisión.'
+      }
+    ],
+    qa:[
+      {q:'¿Qué significa "incorporar pesos del diseño"?',a:'En un muestreo estratificado proporcional, cada estrato aporta observaciones según su tamaño en la población. Si el estrato 1 tiene el 40% de la población, el 40% de la muestra viene de ahí. Los pesos corrigen por eso: una obs de un estrato sub-muestreado "vale más" al calcular la media global. Sin pesos, la media estaría sesgada.'},
+      {q:'¿Por qué no usaron lectura como auxiliar para matemáticas en el estimador de razón?',a:'Podríamos haberlo hecho. Elegimos matemáticas como auxiliar para lectura porque en el contexto educativo colombiano la correlación matemáticas-lectura es alta y matemáticas es una prueba con menor variabilidad relativa — buen ancla. Pero técnicamente ambas direcciones son válidas.'}
+    ]
+  },
+  {
+    tag:'Bloque 4 · DOE — Diseño', title:'¿Qué es el DBCA y por qué lo elegimos?',
+    script:`El Diseño en Bloques Completos al Azar, o <em>DBCA</em>, es nuestro diseño experimental. La idea es comparar dos tratamientos — colegio oficial vs. no oficial — mientras controlamos una fuente de variabilidad conocida: la jornada escolar.
+
+El <em>bloque</em> es la jornada porque sabemos que afecta el puntaje: jornada completa promedia 280 pts, mañana 247 pts, noche 217 pts. Esa diferencia de 63 puntos entre extremos, si no la controlamos, contamina la comparación entre tipos de colegio.
+
+Sin el bloque — es decir, con un <em>DCA</em> — esa variabilidad de jornada caería en el error residual, inflaría el CMError de 1,948 a ~3,200, y el estadístico F bajaría de 53.7 a ~32. El bloqueo es lo que hace al diseño <em>eficiente y preciso</em>.`,
+    ejemplo:{icon:'🔬',h:'Analogía del bloque',a:'Imagina que quieres comparar dos fertilizantes en un campo. Pero el campo tiene zonas más soleadas y zonas más sombreadas. Si mezclas las plantas de ambas zonas en la comparación, no sabrás si la diferencia es por el fertilizante o por la luz. La solución: bloquear por zona (asegurarte de que ambos fertilizantes se usen en cada zona). Eso es exactamente lo que hacemos con la jornada.'},
+    warning:{h:'DCA vs DBCA — pregunta típica',a:'<strong>DCA</strong> (sin bloques): todos los sujetos asignados aleatoriamente a tratamientos, sin controlar nada más. Más simple, pero menos eficiente si hay factores de nuisance. <strong>DBCA</strong>: se forman bloques homogéneos y dentro de cada bloque se aplican todos los tratamientos. Reduce el error y aumenta la potencia.'},
+    formulas:[
+      {
+        title:'Modelo estadístico del DBCA',
+        items:[
+          {sym:'Yᵢⱼ',def:'<strong>Variable respuesta</strong> = puntaje global del estudiante en tratamiento i, bloque j'},
+          {sym:'μ',def:'<strong>Media general</strong> ≈ 261 pts — el promedio global de todos los grupos'},
+          {sym:'τᵢ',def:'<strong>Efecto tratamiento</strong> = efecto de ser oficial (i=1) o no oficial (i=2). τ₁−τ₂ ≈ −41.1 pts (no oficial gana)'},
+          {sym:'βⱼ',def:'<strong>Efecto bloque</strong> = efecto de la jornada j (completa/mañana/noche). Se controla, no nos interesa por sí mismo.'},
+          {sym:'εᵢⱼ',def:'<strong>Error aleatorio</strong> ~ N(0, σ²). Lo que el modelo no explica. Queremos minimizarlo.'},
+        ],
+        formula:'Yᵢⱼ = μ + τᵢ + βⱼ + εᵢⱼ',
+        calculo:'Ejemplo: estudiante no oficial, jornada completa:\nY = 261 + (+21) + (+19) + ε = 301 + ε ≈ 310 observado',
+        nota:'El DBCA extrae βⱼ del error → CMError baja de ~3,200 a 1,948. Eso se traduce en un F más grande y mayor potencia.'
+      },
+      {
+        title:'¿Por qué no un DCL o diseño factorial?',
+        items:[
+          {sym:'DCL',def:'<strong>Diseño en Cuadro Latino:</strong> requiere dos fuentes de variación con igual número de niveles y datos perfectamente balanceados. Nuestros datos no tienen ese balance.'},
+          {sym:'Fact.',def:'<strong>Diseño Factorial:</strong> estudia la interacción entre naturaleza y jornada. Podría usarse, pero el DBCA asume ausencia de interacción τᵢ×βⱼ (verificado). Y el curso requería DBCA.'},
+        ],
+        nota:'El DBCA fue el diseño más apropiado dado el patrón de nuestros datos y el nivel del curso. Siempre hay que justificar el diseño con los datos, no al revés.'
+      }
+    ],
+    qa:[
+      {q:'¿Cómo verificaron que la interacción τ×β no existe?',a:'Gráficamente: si graficamos las medias de cada tratamiento para cada jornada y las líneas son aproximadamente paralelas, no hay interacción. En nuestro caso las líneas son paralelas — el efecto de ser no oficial es consistente en las tres jornadas. Además el modelo sin interacción tiene un buen ajuste.'},
+      {q:'¿El bloque jornada estaba justificado estadísticamente?',a:'Sí. El bloque resultó significativo: F=16.1, p=2.16×10⁻⁷. Eso confirma que la jornada explica una porción real de la varianza del puntaje — no era solo una sospecha teórica. Si el bloque no hubiera sido significativo, hubiera sido mejor usar DCA.'}
+    ]
+  },
+  {
+    tag:'Bloque 5 · ANOVA', title:'La tabla ANOVA: descomponer la varianza',
+    script:`El ANOVA — Análisis de Varianza — responde esta pregunta: ¿la variabilidad que observamos entre los grupos es mayor de lo que esperaríamos solo por azar?
+
+La idea es descomponer la <em>varianza total</em> en partes: la varianza explicada por el tratamiento, la explicada por el bloque, y la que no explica nadie — el error.
+
+Si el tratamiento explica mucho más variabilidad de lo que esperaría el azar, el estadístico <em>F</em> es grande y el p-valor es chico. En nuestro caso: <em>F=53.7</em> y <em>p=1.88×10⁻¹²</em>. Eso es estadísticamente aplastante.
+
+La conclusión: rechazamos H₀. Los colegios oficiales y no oficiales <em>no tienen el mismo puntaje promedio</em>, y esa diferencia no se debe al azar.`,
+    ejemplo:{icon:'📊',h:'Intuición del F',a:'F = (variabilidad explicada por el tratamiento) ÷ (variabilidad no explicada). Si F≈1, el tratamiento no explica nada más que el ruido. Si F=53.7, el tratamiento explica 53.7 veces más de lo que explica el ruido. Es una diferencia enorme.'},
+    warning:{h:'ANOVA no dice quién difiere de quién',a:'Con solo 2 tratamientos el ANOVA ya nos dice que difieren. Pero si tuviéramos 3 o más tratamientos, el ANOVA solo diría "algo difiere" — no "cuál par específico". Para eso necesitamos comparaciones múltiples como Tukey.'},
+    formulas:[
+      {
+        title:'Descomposición de la varianza (SS)',
+        items:[
+          {sym:'SSTotal',def:'<strong>Varianza total</strong> = 796,530 — toda la variabilidad del puntaje en la muestra'},
+          {sym:'SSTrat',def:'<strong>SS Tratamiento</strong> = 104,613 — explicada por el tipo de colegio (lo que nos interesa)'},
+          {sym:'SSBloque',def:'<strong>SS Bloque</strong> = 62,722 — explicada por la jornada (la controlamos)'},
+          {sym:'SSError',def:'<strong>SS Error</strong> = 629,195 — inexplicada. R² = (104,613+62,722)/796,530 = 21%'},
+        ],
+        formula:'SS Total = SS Tratamiento + SS Bloque + SS Error',
+        calculo:'796,530 = 104,613 + 62,722 + 629,195 ✓',
+        nota:'R²=21%: el tipo de colegio y la jornada juntos explican el 21% de la varianza total. Para una variable socioeconómica con muchos factores de confusión, es un R² respetable.'
+      },
+      {
+        title:'Cuadrados Medios y estadístico F',
+        items:[
+          {sym:'CM',def:'<strong>Cuadrado Medio</strong> = SS ÷ gl. Normaliza por grados de libertad para comparar fairamente.'},
+          {sym:'CMTrat',def:'<strong>CM Tratamiento</strong> = 104,613 ÷ 1 = 104,613 (df=1 porque hay 2 grupos → k−1=1)'},
+          {sym:'CMError',def:'<strong>CM Error</strong> = 629,195 ÷ 323 = 1,948 (df = n−k−b+1 = 327−2−3+1=323)'},
+          {sym:'F',def:'<strong>Estadístico F</strong> = CMTrat ÷ CMError = 104,613 ÷ 1,948 = 53.7'},
+        ],
+        formula:'F = CM_Tratamiento / CM_Error',
+        calculo:'F = 104,613 / 1,948 = 53.7\np = P(F₁,₃₂₃ ≥ 53.7) = 1.88×10⁻¹²',
+        nota:'Bajo H₀ verdadera esperaríamos F≈1. Un F=53.7 con p=1.88×10⁻¹² es evidencia contundente de que H₀ es falsa.'
+      }
+    ],
+    qa:[
+      {q:'¿Por qué hay 323 grados de libertad en el error?',a:'gl_Error = n − k − b + 1, donde n=327 observaciones, k=2 niveles de tratamiento, b=3 bloques de jornada. Entonces gl_Error = 327 − 2 − 3 + 1 = 323. Los grados de libertad "gastados" en estimar tratamientos y bloques se descuentan del error.'},
+      {q:'¿El modelo es significativo globalmente?',a:'Sí. F=53.7 con p=1.88×10⁻¹² para el tratamiento y F=16.1 con p=2.16×10⁻⁷ para el bloque — ambos son altamente significativos. El modelo en su conjunto explica la variabilidad del puntaje muy por encima del nivel de azar.'}
+    ]
+  },
+  {
+    tag:'Bloque 6 · Post-hoc', title:'Tukey HSD y la diferencia de 41.1 puntos',
+    script:`Como el ANOVA rechazó H₀, aplicamos <em>Tukey HSD</em> — Honest Significant Difference — para cuantificar la diferencia exacta entre los dos tipos de colegio.
+
+Tukey controla la tasa de error familiar: garantiza que el nivel de significancia es del 5% para <em>todas</em> las comparaciones simultáneamente, no solo para cada una por separado.
+
+El resultado: diferencia de <em>−41.1 puntos</em> (OFICIAL − NO OFICIAL), con IC 95% de <em>[−52.1, −30.1]</em>. El intervalo <em>no contiene el cero</em>, lo que confirma que la diferencia es estadísticamente significativa.
+
+En lenguaje simple: los colegios no oficiales sacan, en promedio, <em>41.1 puntos más</em> que los oficiales, controlando por jornada.`,
+    ejemplo:{icon:'⚖️',h:'¿Por qué el IC no contener el 0 confirma la diferencia?',a:'Si el IC fuera [−10, +10], el 0 estaría adentro — significaría que la diferencia real podría ser 0 (sin efecto). Como es [−52.1, −30.1], el 0 no está → incluso en el escenario más conservador, hay al menos 30.1 puntos de diferencia. Siempre en favor de no oficial.'},
+    warning:{h:'¿Por qué no hacer múltiples t-test?',a:'Con k comparaciones y α=5%, la probabilidad de al menos un error tipo I sube a 1−(0.95)ᵏ. Con 3 comparaciones ya es 14.3%. Tukey controla eso manteniendo FWER = 5% para todas las comparaciones a la vez.'},
+    formulas:[
+      {
+        title:'Diferencia Tukey HSD y su IC',
+        items:[
+          {sym:'diff',def:'<strong>Diferencia observada</strong> = −41.1 pts (OFICIAL − NO OFICIAL). Negativo porque oficial tiene menor puntaje.'},
+          {sym:'lwr',def:'<strong>Límite inferior IC</strong> = −52.1 pts'},
+          {sym:'upr',def:'<strong>Límite superior IC</strong> = −30.1 pts'},
+          {sym:'p adj',def:'<strong>p-valor ajustado</strong> < 0.001 — significativo incluso con la corrección de Tukey'},
+          {sym:'HSD',def:'<strong>Diferencia Mínima Significativa:</strong> la diferencia mínima que Tukey considera real, controlando el error familiar.'},
+        ],
+        formula:'IC Tukey = diff ± q(α, k, df_error) · √(CM_Error / n_por_grupo)',
+        calculo:'diff = −41.1 pts\nIC = [−52.1, −30.1]\nEl cero NO está en el IC → diferencia SIGNIFICATIVA ✓',
+        nota:'Medias marginales estimadas: NO OFICIAL = 282.3 pts, OFICIAL = 241.9 pts. Diferencia cruda ≈ 40.4 pts; ajustada por el modelo = 41.1 pts.'
+      }
+    ],
+    qa:[
+      {q:'¿Tukey vs Bonferroni vs Duncan — cuándo usar cada uno?',a:'Tukey: cuando se comparan todos los pares posibles con tamaños similares — nuestro caso ideal. Bonferroni: más conservador (mayor HSD), menos potencia, pero funciona con cualquier tipo de comparación. Duncan: menos conservador que Tukey, no controla bien FWER en todos los escenarios — generalmente no se recomienda. Para 2 tratamientos como el nuestro, Tukey es estándar.'},
+      {q:'¿Qué implica que la diferencia sea de 41.1 puntos en términos prácticos?',a:'Saber 11 puntúa aproximadamente entre 100 y 500 puntos. Una diferencia de 41.1 puntos representa aproximadamente el 10% de la escala total. En términos de desviación estándar (σ≈44), corresponde a d=0.93 — un efecto grande según Cohen. Es una diferencia educativamente relevante, no solo estadísticamente.'}
+    ]
+  },
+  {
+    tag:'Bloque 7 · Supuestos', title:'Los tres supuestos del ANOVA',
+    script:`Para que el ANOVA sea válido, se necesitan tres supuestos: <em>normalidad de los residuales</em>, <em>homocedasticidad</em> (varianzas iguales) e <em>independencia</em>.
+
+Para normalidad usamos la <em>Prueba de Lilliefors</em>: D=0.052, p=0.031. Se rechaza normalidad al 5%, pero la violación es leve. Con n=327, el <em>Teorema Central del Límite</em> garantiza que las medias muestrales se distribuyen normalmente — el ANOVA es robusto.
+
+Para homocedasticidad usamos <em>Levene</em>: F=1.511, p=0.186. No se rechaza — las varianzas son iguales. Este es el supuesto más crítico y se cumple.
+
+La <em>independencia</em> se asume por diseño: datos de una muestra aleatoria, no una serie temporal.`,
+    ejemplo:{icon:'✅',h:'¿Qué pasa si fallan los supuestos?',a:'<strong>Normalidad falla levemente</strong> (como nuestro caso): TCL protege con n grande → ANOVA válido. <strong>Homocedasticidad falla</strong>: alternativas son Welch-ANOVA (no asume igualdad de varianzas) o transformación Box-Cox. <strong>Independencia falla</strong>: hay que usar modelos con efectos correlacionados (ej: efectos mixtos).'},
+    warning:{h:'¿Por qué Lilliefors y no Shapiro-Wilk?',a:'Shapiro-Wilk está diseñado para n<50. Con n=327 es tan sensible que rechaza normalidad ante desviaciones triviales e irrelevantes. Lilliefors — versión corregida de Kolmogorov-Smirnov — es más apropiado para muestras grandes y da una evaluación más realista.'},
+    formulas:[
+      {
+        title:'Prueba de Lilliefors (normalidad de residuales)',
+        items:[
+          {sym:'H₀',def:'Los residuales siguen una distribución normal'},
+          {sym:'D',def:'<strong>Estadístico D</strong> = 0.052 — distancia máxima entre distribución empírica y normal teórica. Pequeño = poca desviación.'},
+          {sym:'p',def:'<strong>p-valor</strong> = 0.031 < 0.05 → se rechaza H₀. Pero D es pequeño y n=327 activa el TCL → ANOVA robusto.'},
+          {sym:'TCL',def:'<strong>Teorema Central del Límite:</strong> con n≥30, la distribución de las medias muestrales tiende a normal independientemente de la distribución original.'},
+        ],
+        nota:'Con n=327 el TCL nos protege. El ANOVA es robusto a violaciones leves de normalidad especialmente con n grande.'
+      },
+      {
+        title:'Prueba de Levene (homocedasticidad)',
+        items:[
+          {sym:'H₀',def:'Todas las varianzas de los 6 grupos (2 naturalezas × 3 jornadas) son iguales: σ₁²=σ₂²=...=σ₆²'},
+          {sym:'F',def:'<strong>Estadístico F Levene</strong> = 1.511 — compara la dispersión de las desviaciones absolutas entre grupos'},
+          {sym:'p',def:'<strong>p-valor</strong> = 0.186 > 0.05 → NO se rechaza H₀. Varianzas homogéneas ✓'},
+        ],
+        formula:'H₀: σ²(NO OFICIAL/COMPLETA) = ... = σ²(OFICIAL/NOCHE)',
+        calculo:'Levene F(5, 321) = 1.511, p = 0.186\nConclusión: homocedasticidad CUMPLIDA ✓',
+        nota:'Este es el supuesto más crítico para el ANOVA factorial. Si hubiera fallado, necesitaríamos Welch-ANOVA o transformar la variable.'
+      }
+    ],
+    qa:[
+      {q:'¿Qué alternativas tendrían si Levene hubiera fallado?',a:'Tres opciones: (1) Transformación Box-Cox para estabilizar varianzas — encontrar λ tal que Yλ tenga varianza homogénea; (2) Welch-ANOVA — versión del ANOVA que no asume igualdad de varianzas; (3) Kruskal-Wallis — alternativa no paramétrica que no asume normalidad ni homocedasticidad. En nuestro caso el supuesto se cumple, así que no fue necesario.'},
+      {q:'¿Qué significa exactamente el Teorema Central del Límite aquí?',a:'El TCL dice que si tomamos muchas muestras de tamaño n de cualquier población, las medias de esas muestras se distribuirán aproximadamente normal, independientemente de la distribución original. Con n=327 esto ya opera con fuerza. Por eso, aunque los residuales individuales no sean perfectamente normales, las estimaciones del ANOVA (que son promedios de grupos) sí lo son.'}
+    ]
+  },
+  {
+    tag:'Bloque 8 · Potencia', title:'Potencia estadística y tamaño del efecto',
+    script:`La <em>potencia estadística</em> (1−β) es la probabilidad de detectar una diferencia real cuando existe. Con nuestra diferencia de 41.1 puntos, σ=44 y el tamaño de muestra que tenemos, la potencia es del <em>99%</em>.
+
+Eso significa que si los colegios realmente difieren — y los datos confirman que sí — este diseño lo detectaría el 99% de las veces.
+
+El <em>tamaño del efecto d de Cohen</em> = 41.1/44 = <em>0.934</em>, clasificado como efecto grande. Incluso con solo 12 observaciones por grupo la potencia superaría el 80% — el efecto es tan grande que es fácil de detectar.`,
+    ejemplo:{icon:'🔭',h:'Analogía de la potencia',a:'Si buscas un elefante en una habitación oscura con una linterna, la probabilidad de encontrarlo es alta (efecto grande). Si buscas un ratón, necesitas más luz o más tiempo (efecto pequeño → necesitas más muestra para igual potencia). Nuestro d=0.93 es casi "elefante".'},
+    warning:{h:'α vs β — no confundir',a:'<strong>Error tipo I (α = 0.05):</strong> decir que hay diferencia cuando no la hay (falso positivo). Lo controlamos nosotros. <strong>Error tipo II (β = 0.01):</strong> no detectar una diferencia que sí existe (falso negativo). La potencia es 1−β = 0.99. Son los dos tipos de errores que puede cometer una prueba de hipótesis.'},
+    formulas:[
+      {
+        title:'Tipos de error en pruebas de hipótesis',
+        items:[
+          {sym:'H₀ V',def:'Si H₀ es verdadera y decidimos No rechazar → Decisión correcta'},
+          {sym:'α',def:'Si H₀ es verdadera y decidimos Rechazar → Error tipo I (falso positivo). P = α = 0.05'},
+          {sym:'β',def:'Si H₀ es falsa y decidimos No rechazar → Error tipo II (falso negativo). P = β = 0.01'},
+          {sym:'1−β',def:'Si H₀ es falsa y decidimos Rechazar → Decisión correcta. Potencia = 99% en nuestro diseño'},
+        ],
+        nota:'Los dos errores están en trade-off: reducir α (más conservador) tiende a aumentar β. La potencia solo sube aumentando n o el tamaño del efecto.'
+      },
+      {
+        title:'d de Cohen — tamaño del efecto',
+        items:[
+          {sym:'d',def:'<strong>d de Cohen</strong> = δ/σ. Mide la diferencia en unidades de desviación estándar.'},
+          {sym:'Escala',def:'d < 0.2 = pequeño · 0.2–0.5 = pequeño-mediano · 0.5–0.8 = mediano · > 0.8 = grande'},
+        ],
+        formula:'d = δ / σ',
+        calculo:'d = 41.1 / 44 = 0.934 → efecto GRANDE (Cohen 1988)\nN mínimo para potencia 80% con este d: apenas n ≈ 12 por grupo\nNuestro diseño con n≈55 por celda → potencia = 99%',
+        nota:'Un d=0.93 significa que la media de NO OFICIAL está casi 1 desviación estándar por encima de la de OFICIAL — diferencia muy sustancial.'
+      }
+    ],
+    qa:[
+      {q:'¿Cuántas observaciones necesitaban mínimo?',a:'Con δ=41.1, σ=44 y α=0.05, el n mínimo para potencia del 80% es aproximadamente 12 por grupo. Nuestro diseño con ~55 por celda da 99% de potencia — muy por encima del estándar aceptable. El efecto es grande, así que no necesitábamos una muestra enorme.'},
+      {q:'Si el efecto fuera más pequeño, digamos d=0.2, ¿cuánto n necesitarían?',a:'Con d=0.2 y 80% de potencia necesitarían aproximadamente 197 por grupo — más de 10 veces más. Esa es la razón por la que los estudios con efectos pequeños requieren muestras masivas. El número n depende fuertemente del tamaño del efecto esperado.'}
+    ]
+  }
+],
+
+/* ─────────────────────────────────────────────
+   YEISON: Fase II — DOE, inferencia y cierre
+───────────────────────────────────────────── */
+y: [
+  {
+    tag:'Bloque 1 · Diseño exp.', title:'Vocabulario fundamental del DOE',
+    script:`En todo diseño de experimentos hay un vocabulario que debemos dominar. El <em>factor</em> es la variable que manipulamos o comparamos — en nuestro caso, la naturaleza del colegio (oficial vs. no oficial). Los <em>niveles</em> son los valores que toma el factor — dos en total.
+
+La <em>variable respuesta</em> es lo que medimos: el puntaje global de Saber 11. Los <em>tratamientos</em> son las condiciones que comparamos: colegio oficial y colegio no oficial.
+
+El <em>bloque</em> es una variable que no nos interesa per se, pero que afecta la respuesta — la jornada escolar. Al bloquear "neutralizamos" su efecto para que no contamine la comparación de tratamientos.
+
+Todo esto junto forma el <em>DBCA: Diseño en Bloques Completos al Azar</em>.`,
+    ejemplo:{icon:'🧪',h:'Mapeando nuestro proyecto al vocabulario',a:'Factor: naturaleza (oficial / no oficial). Niveles: 2. Bloques: jornada (completa, mañana, noche). Variable respuesta: puntaje global Saber 11. Réplicas: ≈55 estudiantes por celda (tratamiento × bloque). Unidad experimental: un estudiante.'},
+    warning:{h:'Diseño observacional ≠ Experimento',a:'En un experimento verdadero <strong>asignamos</strong> aleatoriamente los sujetos a los tratamientos. Aquí los estudiantes ya están en sus colegios — no los asignamos nosotros. Por eso es diseño observacional: podemos detectar asociaciones pero <strong>no podemos afirmar causalidad</strong>.'},
+    formulas:[
+      {
+        title:'Estructura del DBCA en nuestro proyecto',
+        items:[
+          {sym:'k',def:'<strong>Número de tratamientos</strong> = 2 (oficial, no oficial)'},
+          {sym:'b',def:'<strong>Número de bloques</strong> = 3 (jornada completa, mañana, noche)'},
+          {sym:'n',def:'<strong>Réplicas por celda</strong> ≈ 55 estudiantes → total N = k × b × n ≈ 327 obs'},
+          {sym:'Celdas',def:'<strong>Total de celdas</strong> = k × b = 2 × 3 = 6 combinaciones'},
+        ],
+        nota:'En el DBCA "completo" cada tratamiento aparece en cada bloque exactamente n veces. Esto garantiza que la comparación de tratamientos no esté confundida con los bloques.'
+      }
+    ],
+    qa:[
+      {q:'¿Qué es la aleatorización y por qué importa?',a:'En un experimento, la aleatorización es asignar los tratamientos a las unidades experimentales al azar dentro de cada bloque. Esto garantiza que cualquier variable no controlada se distribuya igualmente entre tratamientos, evitando sesgos sistemáticos. En nuestro caso (diseño observacional), la "aleatorización" fue el muestreo aleatorio estratificado que hicimos en la Fase I.'},
+      {q:'¿Qué es una celda en este diseño?',a:'Una celda es la intersección de un tratamiento y un bloque. Por ejemplo, "NO OFICIAL × MAÑANA" es una celda. Tenemos 6 celdas (2 tratamientos × 3 jornadas), cada una con ≈55 estudiantes. El ANOVA descompone la varianza teniendo en cuenta esta estructura.'}
+    ]
+  },
+  {
+    tag:'Bloque 2 · Hipótesis', title:'Hipótesis nula y alternativa del ANOVA',
+    script:`Antes de correr el ANOVA, debemos plantear las hipótesis formalmente.
+
+La <em>hipótesis nula H₀</em> es que todos los tratamientos producen el mismo efecto: τ₁ = τ₂ = 0, es decir, no hay diferencia entre el puntaje promedio de los colegios oficiales y no oficiales, controlando por jornada.
+
+La <em>hipótesis alternativa H₁</em> es que al menos un tratamiento produce un efecto diferente: al menos un τᵢ ≠ 0. Es decir, existe al menos una diferencia significativa.
+
+El ANOVA prueba si la variabilidad explicada por los tratamientos es lo suficientemente grande comparada con el error aleatorio. Con <em>F=53.7 y p=1.88×10⁻¹²</em>, rechazamos H₀ con contundencia.`,
+    ejemplo:{icon:'⚡',h:'¿Qué significa p=1.88×10⁻¹²?',a:'Si H₀ fuera verdadera (no hay diferencia real), la probabilidad de obtener un F tan extremo como 53.7 solo por azar es de 1.88 en un billón. En términos prácticos: es imposible que esta diferencia sea azar.'},
+    warning:{h:'Error clásico de interpretación del p-valor',a:'El p-valor <strong>no</strong> es la probabilidad de que H₀ sea verdadera. Es la probabilidad de obtener datos tan extremos (o más) <strong>dado que H₀ es verdadera</strong>. Nunca decir "hay 1.88×10⁻¹² de probabilidad de que no haya diferencia".'},
+    formulas:[
+      {
+        title:'Planteamiento formal de hipótesis — DBCA',
+        items:[
+          {sym:'H₀',def:'<strong>Hipótesis nula:</strong> τ₁ = τ₂ = 0. El tipo de colegio no tiene efecto sobre el puntaje medio, controlando por jornada.'},
+          {sym:'H₁',def:'<strong>Hipótesis alternativa:</strong> al menos un τᵢ ≠ 0. Existe al menos un tipo de colegio con puntaje medio diferente.'},
+          {sym:'α',def:'<strong>Nivel de significancia</strong> = 0.05 — fijado antes de ver los datos.'},
+          {sym:'Regla',def:'<strong>Regla de decisión:</strong> rechazar H₀ si p-valor < α = 0.05, o equivalentemente si F_obs > F_crítico(1, 323, 0.05).'},
+        ],
+        calculo:'F_crítico(1, 323, 0.05) ≈ 3.86\nF_observado = 53.7 >> 3.86 → RECHAZO H₀\np = 1.88×10⁻¹² < 0.05 → RECHAZO H₀ ✓',
+        nota:'Ambas formas de decidir — comparar F con F_crítico, o p con α — dan exactamente el mismo resultado.'
+      }
+    ],
+    qa:[
+      {q:'¿Por qué α=0.05 y no 0.01 o 0.10?',a:'α=0.05 es la convención estándar en ciencias sociales y educación desde Fisher. Significa que aceptamos 5% de probabilidad de error tipo I. Con α=0.01 seríamos más conservadores pero podríamos perder diferencias reales. Con α=0.10 aumentamos la potencia pero también los falsos positivos. En nuestro caso con p=1.88×10⁻¹², el resultado sería significativo incluso con α=0.001.'},
+      {q:'¿Qué es el F crítico y cómo se usa?',a:'El F crítico es el valor de la distribución F que separa el 5% de la cola derecha. Si nuestro F observado supera ese umbral, rechazamos H₀. Con df₁=1 y df₂=323, F_crítico≈3.86. Como F_obs=53.7 >> 3.86, rechazamos. Es equivalente a comparar p con α, pero el F crítico permite entender visualmente cuán extremo es el resultado.'}
+    ]
+  },
+  {
+    tag:'Bloque 3 · Causalidad', title:'¿Por qué no podemos afirmar causalidad?',
+    script:`Uno de los puntos más importantes — y donde nos pueden atacar — es la distinción entre asociación y causalidad.
+
+Encontramos que los colegios no oficiales tienen en promedio <em>41.1 puntos más</em> que los oficiales. Eso es una <em>asociación</em> estadísticamente significativa. Pero <em>no</em> podemos decir que ser de colegio no oficial <em>causa</em> un mayor puntaje.
+
+La razón: hay <em>variables de confusión</em>. El estrato socioeconómico es la principal: los colegios no oficiales tienden a concentrarse en estratos altos, y los estudiantes de estrato alto tienen más recursos en el hogar (libros, internet, clases de apoyo), independientemente del colegio.
+
+Para establecer causalidad necesitaríamos un experimento aleatorizado — asignar estudiantes al azar a colegios oficiales y no oficiales. Eso es éticamente imposible.`,
+    ejemplo:{icon:'🔗',h:'Asociación ≠ Causalidad — el ejemplo clásico',a:'Los países con más ventas de helado tienen más ahogamientos. ¿El helado causa ahogamientos? No — el calor es la variable de confusión: el calor causa que la gente compre helado Y que la gente vaya a nadar. Con los colegios pasa algo similar: el estrato socioeconómico puede explicar parte de la diferencia.'},
+    warning:{h:'Cómo responder esto en la sustentación',a:'Si el profesor pregunta "¿entonces los colegios no oficiales son mejores?", la respuesta correcta es: <strong>"Encontramos una asociación estadísticamente significativa. No podemos afirmar causalidad porque el diseño es observacional y existen posibles variables de confusión como el estrato socioeconómico."</strong>'},
+    formulas:[
+      {
+        title:'Condiciones para establecer causalidad',
+        items:[
+          {sym:'1. Asoc.',def:'<strong>Asociación:</strong> los dos fenómenos ocurren juntos. ✓ Tenemos esto.'},
+          {sym:'2. Temp.',def:'<strong>Temporalidad:</strong> la causa precede al efecto. En parte sí (el colegio va antes del Saber 11).'},
+          {sym:'3. Plaus.',def:'<strong>Plausibilidad:</strong> existe un mecanismo explicativo razonable. Sí: mejor infraestructura, menor hacinamiento, etc.'},
+          {sym:'4. Conf.',def:'<strong>Ausencia de confusión:</strong> no hay otras variables que expliquen la relación. ✗ Aquí falla — el estrato es un confusor probable.'},
+          {sym:'5. Aleato.',def:'<strong>Aleatorización:</strong> los sujetos fueron asignados al azar a los tratamientos. ✗ No tenemos esto — es observacional.'},
+        ],
+        nota:'Faltan las condiciones 4 y 5. Por eso solo podemos hablar de asociación, no causalidad. Esto no invalida el estudio — simplemente delimita su alcance.'
+      }
+    ],
+    qa:[
+      {q:'¿Qué harían para controlar el efecto del estrato socioeconómico?',a:'Varias opciones: (1) Incluir el estrato como covariable en el modelo — ANCOVA en lugar de ANOVA; (2) Estratificar el análisis: comparar oficial vs no oficial dentro de cada estrato; (3) Usar un diseño de matching — emparejar estudiantes de similar estrato de ambos tipos de colegio. Cualquiera de estas reduciría el confundimiento del estrato.'},
+      {q:'¿Sigue siendo valioso el estudio aunque no haya causalidad?',a:'Absolutamente. La asociación estadística es útil para política pública: si los no oficiales consistentemente tienen mejores resultados, vale la pena investigar por qué y qué prácticas se pueden replicar. La causalidad es el ideal, pero la evidencia observacional rigurosa es el punto de partida de cualquier investigación educativa.'}
+    ]
+  },
+  {
+    tag:'Bloque 4 · Residuales', title:'Análisis de residuales — diagnóstico del modelo',
+    script:`Los <em>residuales</em> son la diferencia entre el valor observado y el valor que predice el modelo: e = Y_obs − Ŷ. Son la parte del puntaje que el modelo no explica.
+
+Analizar los residuales nos dice si el modelo está bien especificado. Si los residuales muestran patrones — por ejemplo, que sean sistemáticamente grandes para colegios de cierta región — es señal de que falta algo en el modelo.
+
+Para nuestro modelo verificamos tres cosas en los residuales: que se distribuyan aproximadamente normal (Lilliefors), que su varianza sea constante para todos los grupos (Levene) y que no haya autocorrelación (independencia por diseño).
+
+Los dos primeros supuestos se cumplieron satisfactoriamente — el modelo está bien especificado para los datos que tenemos.`,
+    ejemplo:{icon:'🩺',h:'Diagnóstico visual de residuales',a:'<strong>QQ-plot:</strong> si los puntos siguen la diagonal → normalidad OK. <strong>Residuales vs valores ajustados:</strong> si hay una nube horizontal sin patrón → homocedasticidad OK. <strong>Histograma de residuales:</strong> campana aproximada → normalidad OK. Estos gráficos son los que mostramos en el dashboard.'},
+    warning:{h:'Residuales ≠ errores',a:'En estadística, el "error" εᵢⱼ es el término teórico del modelo (desconocido). El "residual" eᵢⱼ = Y_obs − Ŷ es nuestra estimación del error (observable). Los supuestos del ANOVA son sobre los errores teóricos — los evaluamos usando los residuales observados.'},
+    formulas:[
+      {
+        title:'Cálculo e interpretación del residual',
+        items:[
+          {sym:'eᵢⱼ',def:'<strong>Residual</strong> = Yᵢⱼ − Ŷᵢⱼ. La diferencia entre lo observado y lo predicho por el modelo.'},
+          {sym:'Ŷᵢⱼ',def:'<strong>Valor ajustado</strong> = μ̂ + τ̂ᵢ + β̂ⱼ. Lo que el modelo dice que debería ser el puntaje.'},
+          {sym:'∑eᵢⱼ',def:'<strong>Suma de residuales</strong> = 0 siempre (propiedad del modelo). Unos son positivos y otros negativos — se cancelan.'},
+        ],
+        formula:'eᵢⱼ = Yᵢⱼ − (μ̂ + τ̂ᵢ + β̂ⱼ)',
+        calculo:'Ejemplo: Y_obs = 310, μ̂=261, τ̂(no oficial)=+21, β̂(completa)=+19\nŶ = 261+21+19 = 301\ne = 310 − 301 = +9 (el modelo sub-predice por 9 pts)',
+        nota:'Un R²=21% significa que el 79% de la varianza es residual — muchos factores no están en el modelo (estrato, región, capital humano familiar, etc.).'
+      }
+    ],
+    qa:[
+      {q:'¿Qué significa R²=21% — es un valor bueno o malo?',a:'Depende del contexto. En ciencias exactas o ingeniería, R²=21% sería bajo. Pero en ciencias sociales y educación, donde el comportamiento humano tiene cientos de determinantes, explicar el 21% de la varianza del puntaje con solo 2 variables (naturaleza y jornada) es bastante razonable. No buscamos un modelo perfecto — buscamos uno que responda nuestra pregunta de investigación.'},
+      {q:'¿Qué harían si los residuales mostraran un patrón sistemático?',a:'Dependería del patrón. Si hay un outlier extremo: investigar si es error de datos o un caso genuino. Si los residuales son mayores en grupos específicos (heterocedasticidad): transformar Y o usar Welch-ANOVA. Si hay tendencia temporal: incluir el período como covariable. El análisis de residuales es diagnóstico — nos dice qué mejorar.'}
+    ]
+  },
+  {
+    tag:'Bloque 5 · Eficiencia', title:'Eficiencia del diseño — ¿valió la pena bloquear?',
+    script:`Una pregunta legítima es: ¿valió la pena el esfuerzo de bloquear por jornada? La respuesta es sí, y tenemos los números para demostrarlo.
+
+Sin bloqueo (DCA), el CMError sería ~3,200 porque la variabilidad de la jornada quedaría en el error. Con bloqueo (DBCA), el CMError es 1,948 — el bloqueo sacó 62,722 unidades de SS del error.
+
+Eso se traduce en un F que sube de ~32 a 53.7, y la potencia de ~95% a 99%. El bloqueo fue <em>eficiente y estadísticamente justificado</em>: el bloque mismo resultó significativo con F=16.1 y p=2.16×10⁻⁷.
+
+Regla general: si el bloque no hubiera sido significativo, hubiera sido mejor usar DCA — los bloques cuestan grados de libertad en el error.`,
+    ejemplo:{icon:'📉',h:'El costo-beneficio del bloqueo',a:'Bloquear tiene un costo: pierdes grados de libertad en el error (b−1=2 gl). Eso hace el CMError más incierto. El beneficio: reduces SSError al extraer SSBloque. El bloqueo vale la pena cuando SSBloque es grande — lo que verificamos con F_bloque=16.1. Si F_bloque hubiera sido ≈1, el bloqueo no habría ayudado.'},
+    warning:{h:'Interacción tratamiento × bloque',a:'El DBCA asume que no hay interacción entre tratamiento y bloque — que el efecto de la naturaleza del colegio es el mismo en todas las jornadas. Verificamos esto gráficamente: las líneas de medias son aproximadamente paralelas. Si hubiera interacción, necesitaríamos un diseño factorial completo.'},
+    formulas:[
+      {
+        title:'Comparación DCA vs DBCA — eficiencia relativa',
+        items:[
+          {sym:'DCA',def:'<strong>Sin bloque:</strong> SSBloque queda en el error → CMError ≈ 3,200 → F ≈ 32 → potencia ≈ 95%'},
+          {sym:'DBCA',def:'<strong>Con bloque:</strong> SSBloque separado del error → CMError = 1,948 → F = 53.7 → potencia = 99%'},
+          {sym:'ER',def:'<strong>Eficiencia Relativa</strong> = CMError_DCA / CMError_DBCA = 3,200 / 1,948 ≈ 1.64'},
+        ],
+        calculo:'ER ≈ 1.64 → el DBCA equivale a tener 1.64 veces más réplicas que el DCA\nEn términos de muestra: necesitaríamos 1.64 × 327 ≈ 536 obs con DCA para igual potencia',
+        nota:'El bloque jornada fue significativo: F_bloque = 16.1, p = 2.16×10⁻⁷. Esto confirma que la decisión de bloquear estaba metodológicamente justificada.'
+      }
+    ],
+    qa:[
+      {q:'¿Cuándo NO conviene bloquear?',a:'Cuando el factor de bloqueo no está correlacionado con la variable respuesta — es decir, cuando el bloque no hubiera sido significativo. En ese caso, bloquear solo cuesta grados de libertad sin reducir el error, lo que disminuye la potencia. La regla: bloquear si se sospecha que el factor de bloqueo explica variabilidad en Y, y si el bloque es significativo en el modelo.'},
+      {q:'¿Se puede bloquear por más de una variable?',a:'Sí. Si hubiéramos bloqueado por jornada Y por región (bogotá vs resto), tendríamos un Diseño en Cuadro Latino (DCL). Pero requiere que ambos factores de bloqueo tengan el mismo número de niveles y datos perfectamente balanceados — condición que nuestros datos no cumplían perfectamente.'}
+    ]
+  },
+  {
+    tag:'Bloque 6 · Conclusiones', title:'Conclusiones, limitaciones y próximos pasos',
+    script:`Las conclusiones del proyecto son cinco.
+
+Primero, el puntaje promedio nacional estimado es <em>250.74 puntos</em> con IC 95% de [246.42, 255.06] — dentro del margen de error objetivo de ±3 pts.
+
+Segundo, el muestreo estratificado por estrato fue eficiente: el estimador de razón redujo el CV de 0.88% a 0.78%.
+
+Tercero — y más importante — los colegios no oficiales obtienen en promedio <em>41.1 puntos más</em> que los oficiales, diferencia significativa (F=53.7, p=1.88×10⁻¹²) y de gran magnitud (d=0.93).
+
+Cuarto, la jornada escolar también afecta el puntaje significativamente — justificó el bloqueo.
+
+Quinto — limitación clave — el diseño es <em>observacional</em>, así que no se puede establecer causalidad.`,
+    ejemplo:{icon:'📋',h:'Cómo presentar las conclusiones',a:'Una conclusión bien formada tiene tres partes: (1) qué encontramos, (2) con qué evidencia estadística, (3) qué significa. Ejemplo: "Los colegios no oficiales obtienen 41.1 pts más [qué], estadísticamente significativo con F=53.7 y p<0.001 [evidencia], lo que representa un efecto grande (d=0.93) con relevancia práctica en el contexto educativo colombiano [significado]."'},
+    warning:{h:'Correlación del muestreo con el DOE',a:'Las dos fases no son independientes: el muestreo estratificado (Fase I) produce la muestra representativa sobre la que aplicamos el DOE (Fase II). Si la Fase I hubiera tenido sesgo, la Fase II habría heredado ese sesgo. La calidad del análisis experimental depende de la calidad del muestreo previo.'},
+    formulas:[
+      {
+        title:'Resumen de resultados clave del proyecto',
+        items:[
+          {sym:'n',def:'<strong>Muestra final:</strong> 841 observaciones (piloto 300 + definitiva 541)'},
+          {sym:'μ̂',def:'<strong>Media estimada:</strong> 250.74 pts, IC=[246.42, 255.06]'},
+          {sym:'diff',def:'<strong>Diferencia NO OFICIAL − OFICIAL:</strong> +41.1 pts (IC Tukey=[30.1, 52.1])'},
+          {sym:'F',def:'<strong>Estadístico F tratamiento:</strong> 53.7, p=1.88×10⁻¹² → Rechazamos H₀'},
+          {sym:'d',def:'<strong>d de Cohen:</strong> 0.934 → Efecto grande'},
+          {sym:'Potencia',def:'<strong>Potencia del diseño:</strong> 99% con n≈55 por celda'},
+          {sym:'Supuestos',def:'<strong>Supuestos:</strong> homocedasticidad ✓ (Levene p=0.186), normalidad ≈ ✓ (TCL protege)'},
+        ],
+        nota:'Todos los valores proceden del código R con el paquete survey para la Fase I y el paquete emmeans para Tukey en la Fase II.'
+      }
+    ],
+    qa:[
+      {q:'¿Qué harían diferente si repitieran el estudio?',a:'Tres mejoras: (1) fijar semilla aleatoria reproducible para que los resultados sean idénticos en cualquier corrida; (2) controlar el período de presentación como segunda variable de bloqueo — las cohortes de distintos años pueden diferir; (3) incluir la región geográfica como covariable para separar el efecto del colegio del efecto de la ciudad.'},
+      {q:'¿Qué recomendarían en términos de política educativa?',a:'Con cautela por la naturaleza observacional: la diferencia de 41.1 pts es lo suficientemente grande para justificar una investigación más profunda sobre qué características de los colegios no oficiales (infraestructura, selección de docentes, jornada extendida) podrían replicarse en el sector oficial. No podemos decir "privatizar mejora los puntajes", sino "la brecha existe y merece atención política".'}
+    ]
+  },
+  {
+    tag:'Bloque 7 · Repaso rápido', title:'Mapa conceptual: todo el proyecto en una página',
+    script:`Para el cierre, voy a conectar todos los conceptos en un solo hilo.
+
+Partimos de una <em>pregunta:</em> ¿difiere el puntaje Saber 11 según la naturaleza del colegio? Para responderla necesitábamos datos representativos → <em>muestreo estratificado</em>, n=841.
+
+Con esos datos diseñamos un <em>DBCA</em>: factor naturaleza (2 niveles), bloque jornada (3 niveles). Verificamos los <em>supuestos</em> del modelo (Lilliefors + Levene) y corrimos el <em>ANOVA</em>.
+
+El ANOVA rechazó H₀ con F=53.7. Cuantificamos la diferencia con <em>Tukey</em>: −41.1 pts, IC=[−52.1, −30.1]. El tamaño del efecto d=0.93 es grande. La <em>potencia</em> fue del 99%.
+
+Conclusión: sí existe una diferencia significativa y relevante. Limitación: no es causal porque el diseño es observacional.`,
+    ejemplo:{icon:'🗺️',h:'El hilo conductor del proyecto',a:'Pregunta → Muestreo (¿cuántos? ¿cómo?) → Datos representativos → Diseño DOE (¿cómo comparar?) → ANOVA (¿hay diferencia?) → Tukey (¿cuánta diferencia?) → Supuestos (¿es válido el análisis?) → Potencia (¿era suficientemente sensible?) → Conclusión + Limitaciones.'},
+    warning:{h:'Lo que no puedes olvidar en la sustentación',a:'(1) La diferencia es de 41.1 pts, NO 41. (2) El p-valor es 1.88×10⁻¹², no "prácticamente cero". (3) El diseño es OBSERVACIONAL → no hay causalidad. (4) Lilliefors, no Shapiro-Wilk. (5) El bloque fue significativo (F=16.1, p=2.16×10⁻⁷) → el bloqueo estaba justificado.'},
+    formulas:[
+      {
+        title:'Checklist: conceptos que debes poder explicar sin notas',
+        items:[
+          {sym:'✅',def:'<strong>Muestreo:</strong> MAS vs estratificado, fórmula de n, piloto, IC, estimador de razón'},
+          {sym:'✅',def:'<strong>DOE:</strong> factor, nivel, bloque, réplica, DBCA vs DCA, modelo Yᵢⱼ = μ+τᵢ+βⱼ+εᵢⱼ'},
+          {sym:'✅',def:'<strong>ANOVA:</strong> SS Total = SS Trat + SS Bloque + SS Error, CM = SS/gl, F = CMTrat/CMError'},
+          {sym:'✅',def:'<strong>Tukey HSD:</strong> qué controla, diferencia = −41.1, IC = [−52.1, −30.1], por qué no t-test'},
+          {sym:'✅',def:'<strong>Supuestos:</strong> Lilliefors (normalidad, TCL), Levene (homocedasticidad), independencia'},
+          {sym:'✅',def:'<strong>Potencia:</strong> 1−β = 99%, d de Cohen = 0.93, α vs β, error tipo I vs II'},
+          {sym:'✅',def:'<strong>Causalidad:</strong> por qué no podemos afirmarla, qué es una variable de confusión'},
+        ],
+        nota:'Si puedes explicar cada ítem en máximo 2 oraciones simples, están listos para sustentar.'
+      }
+    ],
+    qa:[
+      {q:'¿Cuál es la diferencia entre significancia estadística y relevancia práctica?',a:'Significancia estadística (p<0.05) solo dice que la diferencia es real — no debida al azar. Relevancia práctica dice si esa diferencia importa en el mundo real. Una diferencia de 0.1 puntos puede ser estadísticamente significativa con n=1M, pero irrelevante en la práctica. En nuestro caso tenemos ambas: el p es aplastante Y la diferencia de 41.1 pts (d=0.93) es prácticamente relevante en educación.'},
+      {q:'Si el profesor les pide que resuman el proyecto en 30 segundos, ¿qué dicen?',a:'Estudiamos si el puntaje Saber 11 difiere entre colegios oficiales y no oficiales. Usando muestreo estratificado tomamos 841 estudiantes de una base de 7.1 millones. Aplicamos un DBCA con la jornada como bloque y encontramos que los no oficiales obtienen 41.1 puntos más — diferencia estadísticamente significativa (p=1.88×10⁻¹²) y de efecto grande (d=0.93). No podemos afirmar causalidad porque el diseño es observacional.'}
+    ]
+  }
+]
+};
+
+let p=null,steps=[],cur=0;
+
+function init(who){
+  p=who; steps=D[who]; cur=0;
+  document.getElementById('sel').style.display='none';
+  document.getElementById('app').classList.add('active');
+  document.getElementById('badge').textContent=who==='j'?'Julián Toloza':'Yeison Hoyos';
+  document.getElementById('badge').className='pbadge '+(who==='j'?'pbj':'pby');
+  render();
+}
+function back(){
+  document.getElementById('sel').style.display='flex';
+  document.getElementById('app').classList.remove('active');
+}
+function render(){
+  const s=steps[cur],tot=steps.length,pct=((cur+1)/tot*100).toFixed(0);
+  document.getElementById('ptext').textContent=(cur+1)+' / '+tot;
+  document.getElementById('pbf').style.width=pct+'%';
+
+  // Formulas HTML
+  let fHTML='';
+  if(s.formulas&&s.formulas.length){
+    s.formulas.forEach(f=>{
+      const rows=f.items.map(it=>`<div class="frow"><span class="fsym">${it.sym}</span><span class="fdef">${it.def}</span></div>`).join('');
+      const fml=f.formula?`<div class="fformula">${f.formula}</div>`:'';
+      const calc=f.calculo?`<div class="fcalc">${f.calculo.replace(/\n/g,'<br>')}</div>`:'';
+      const note=f.nota?`<div class="fnote">💡 ${f.nota}</div>`:'';
+      fHTML+=`<div class="fblock"><div class="fblock-title">${f.title}</div>${rows}${fml}${calc}${note}</div>`;
+    });
+  }
+
+  // QA HTML
+  let qaHTML='';
+  if(s.qa&&s.qa.length){
+    qaHTML=`<div class="qasec"><div class="qatitle"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Posibles preguntas del profesor</div>`+
+    s.qa.map(q=>`<div class="qaitem"><div class="qaq" onclick="tqa(this)"><span>${q.q}</span><span class="qchev">▾</span></div><div class="qaa"><p>${q.a}</p></div></div>`).join('')+`</div>`;
+  }
+
+  // Example box
+  const exHTML = s.ejemplo ? `<div class="exbox">
+    <div class="exicon">${s.ejemplo.icon}</div>
+    <div><div class="exlabel">Ejemplo / Analogía</div><div class="extext"><strong>${s.ejemplo.h}</strong> — ${s.ejemplo.a}</div></div>
+  </div>` : '';
+
+  // Warning box
+  const warnHTML = s.warning ? `<div class="warnbox">
+    <div style="font-size:18px;flex-shrink:0;margin-top:2px">⚠️</div>
+    <div><div class="warnlabel">Cuidado / Distinción clave</div><div class="warntext"><strong>${s.warning.h}</strong> — ${s.warning.a}</div></div>
+  </div>` : '';
+
+  document.getElementById('cont').innerHTML=`
+    <div class="scard">
+      <div class="sheader">
+        <div class="snum">${cur+1}</div>
+        <div><div class="stag">${s.tag}</div><div class="stitle">${s.title}</div></div>
+      </div>
+
+      <div class="sbox">
+        <div class="sblabel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Teleprónter — Lee esto en voz alta
+        </div>
+        <div class="sbtext">${s.script.replace(/\n\n/g,'<br><br>').replace(/\n/g,' ')}</div>
+      </div>
+
+      ${exHTML}
+      ${warnHTML}
+
+      <div class="facc">
+        <div class="facc-h" onclick="tform(this)">
+          <div class="facc-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            Fórmulas y definiciones detalladas
+          </div>
+          <span class="fchev">▾</span>
+        </div>
+        <div class="facc-body">${fHTML}</div>
+      </div>
+
+      ${qaHTML}
+
+      <div class="navbar">
+        <button class="nbtn" onclick="prev()" ${cur===0?'disabled':''}>← Anterior</button>
+        <span class="sctr">${cur+1} de ${steps.length}</span>
+        <button class="nbtn nxt" onclick="next()">${cur===steps.length-1?'Finalizar':'Siguiente →'}</button>
+      </div>
+    </div>`;
+  window.scrollTo(0,0);
+}
+function next(){
+  if(cur<steps.length-1){cur++;render();}
+  else{
+    document.getElementById('cont').innerHTML=`<div class="done"><h2>¡Listos para <span>sustentar</span>!</h2><p>Repasaron todos los conceptos. Si en la sustentación se les va un número — el dashboard lo tiene. Si se les va una fórmula — esta guía la tiene. Si se les va la lógica — la analogía los rescata.</p><button class="nbtn nxt" onclick="cur=0;render()" style="margin:0 auto;display:block">Volver al inicio</button></div>`;
+  }
+}
+function prev(){if(cur>0){cur--;render();}}
+function tqa(el){
+  const a=el.nextElementSibling,c=el.querySelector('.qchev'),o=a.classList.contains('open');
+  document.querySelectorAll('.qaa').forEach(x=>x.classList.remove('open'));
+  document.querySelectorAll('.qchev').forEach(x=>x.classList.remove('open'));
+  if(!o){a.classList.add('open');c.classList.add('open');}
+}
+function tform(el){
+  const b=el.nextElementSibling,c=el.querySelector('.fchev'),o=b.classList.contains('open');
+  b.classList.toggle('open',!o);c.classList.toggle('open',!o);
+}
+</script>
+</body>
+</html>
